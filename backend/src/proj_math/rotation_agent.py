@@ -1,8 +1,9 @@
 """
-math_module.py — Viewfinder
-----------------------------
-Transforms HYG 3D star coordinates into 2D display coordinates
-based on device orientation (yaw, pitch, roll) from the Modulino Movement.
+rotation_agent.py — Viewfinder
+--------------------------------
+Rotation and projection pipeline for mapping HYG star coordinates
+into 2D display space based on device orientation (yaw, pitch, roll)
+from the Modulino Movement.
 
 Coordinate Systems
 ------------------
@@ -16,14 +17,13 @@ Camera space (after rotation):
     +Y → up
     +Z → into the screen (the direction we're pointing)
 
-2D output:
-    (0, 0) → top-left of display
-    (cols-1, rows-1) → bottom-right of display
-    For the LED matrix, default is 12 cols x 8 rows (adjust as needed)
+Outputs
+-------
+    get_led_view()   → pixel positions for the Arduino LED matrix
+    _project_stars() → shared normalised 2D coords for frontend_agent.py
 """
 
 import numpy as np
-from typing import Optional
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +205,13 @@ def normalize_to_led_pixels(
 
 
 # ---------------------------------------------------------------------------
-# High-level convenience function
+# Shared internal pipeline helper
 # ---------------------------------------------------------------------------
 def _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg):
     camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
     camera_coords = transform_stars_to_camera(star_xyz, camera_matrix)
     return project_to_normalized_2d(camera_coords, fov_deg)
+
 
 def get_led_view(
     star_xyz: np.ndarray,
@@ -252,93 +253,6 @@ def get_led_view(
     pixels = normalize_to_led_pixels(projected, visible_mask, cols, rows)
 
     return pixels, visible_mask
-
-def get_frontend_direction(yaw_deg: float, pitch_deg: float) -> dict:
-    """
-    Returns the device's current pointing direction for the frontend.
-
-    Called whenever the Arduino sends a new orientation reading, independently
-    of the star list. The frontend uses this to draw a bounding box on its
-    full sky map showing where the device is currently aimed.
-
-    Parameters
-    ----------
-    yaw_deg : float
-        Yaw from orientation.py (degrees).
-    pitch_deg : float
-        Pitch from orientation.py (degrees).
-
-    Returns
-    -------
-    dict with keys:
-        "pointing" : {"yaw": float, "pitch": float}
-        "fov_deg"  : float — the device's FOV so the frontend can size the bounding box
-    """
-    return {
-        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
-        "fov_deg":  60.0,
-    }
-
-
-def get_frontend_stars(
-    star_xyz: np.ndarray,
-    star_df,
-    yaw_deg: float,
-    pitch_deg: float,
-    roll_deg: float,
-    fov_deg: float = 60.0,
-) -> list:
-    """
-    Full pipeline: HYG xyz → frontend-ready list of visible stars.
-
-    The primary output function for the React frontend. Can be called both
-    when the Arduino is active (live orientation) and when the user is
-    browsing the sky map independently on the laptop. Returns only the stars
-    currently in view — the frontend never touches the star database directly.
-
-    FOV is intentionally wider than get_led_view (60° vs 30°) since the
-    frontend has a full screen to work with.
-
-    Parameters
-    ----------
-    star_xyz : np.ndarray, shape (N, 3)
-        HYG x, y, z columns for N stars.
-    star_df : pd.DataFrame
-        The full HYG DataFrame, aligned row-for-row with star_xyz.
-        Expected columns: "proper", "mag", "con".
-    yaw_deg : float
-        Yaw from orientation.py (degrees).
-    pitch_deg : float
-        Pitch from orientation.py (degrees).
-    roll_deg : float
-        Roll from orientation.py (degrees). Used in the projection but not
-        returned — roll doesn't change what region of sky is visible.
-    fov_deg : float
-        Horizontal field of view in degrees (default 60°).
-
-    Returns
-    -------
-    list of dicts, one per visible star:
-        "x"             : float, normalised -1 (left) to +1 (right)
-        "y"             : float, normalised -1 (bottom) to +1 (top)
-        "name"          : str or None — proper name if one exists in HYG
-        "magnitude"     : float — brightness, lower is brighter
-        "constellation" : str — IAU constellation abbreviation e.g. "Ori"
-    """
-    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
-    visible_proj = projected[visible_mask]
-    visible_meta = star_df[visible_mask].reset_index(drop=True)
-
-    return [
-        {
-            "x":             float(visible_proj[i, 0]),   # -1 (left)  to +1 (right)
-            "y":             float(visible_proj[i, 1]),   # -1 (bottom) to +1 (top)
-            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
-            "magnitude":     float(visible_meta.at[i, "mag"]),
-            "constellation": visible_meta.at[i, "con"],
-        }
-        for i in range(len(visible_proj))
-    ]
 
 def build_led_frame(
     pixels: np.ndarray,
