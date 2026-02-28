@@ -253,25 +253,51 @@ def get_led_view(
 
     return pixels, visible_mask
 
-def get_frontend_view(
+def get_frontend_direction(yaw_deg: float, pitch_deg: float) -> dict:
+    """
+    Returns the device's current pointing direction for the frontend.
+
+    Called whenever the Arduino sends a new orientation reading, independently
+    of the star list. The frontend uses this to draw a bounding box on its
+    full sky map showing where the device is currently aimed.
+
+    Parameters
+    ----------
+    yaw_deg : float
+        Yaw from orientation.py (degrees).
+    pitch_deg : float
+        Pitch from orientation.py (degrees).
+
+    Returns
+    -------
+    dict with keys:
+        "pointing" : {"yaw": float, "pitch": float}
+        "fov_deg"  : float — the device's FOV so the frontend can size the bounding box
+    """
+    return {
+        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
+        "fov_deg":  60.0,
+    }
+
+
+def get_frontend_stars(
     star_xyz: np.ndarray,
     star_df,
     yaw_deg: float,
     pitch_deg: float,
     roll_deg: float,
     fov_deg: float = 60.0,
-) -> dict:
+) -> list:
     """
-    Full pipeline: HYG xyz → frontend-ready sky view payload.
+    Full pipeline: HYG xyz → frontend-ready list of visible stars.
 
-    Counterpart to get_led_view (stars_to_pixels). Where get_led_view produces
-    a pixel map for the LED matrix, this produces a JSON-serialisable dict
-    that the FastAPI server returns directly to the frontend.
+    The primary output function for the React frontend. Can be called both
+    when the Arduino is active (live orientation) and when the user is
+    browsing the sky map independently on the laptop. Returns only the stars
+    currently in view — the frontend never touches the star database directly.
 
-    The frontend receives normalised (x, y) coordinates in [-1, 1] so it can
-    scale them to any screen size without knowing the display resolution.
-    FOV is intentionally wider than the LED matrix (60° vs 30°) — the frontend
-    has far more screen real-estate to work with.
+    FOV is intentionally wider than get_led_view (60° vs 30°) since the
+    frontend has a full screen to work with.
 
     Parameters
     ----------
@@ -285,23 +311,25 @@ def get_frontend_view(
     pitch_deg : float
         Pitch from orientation.py (degrees).
     roll_deg : float
-        Roll from orientation.py (degrees). Used for the projection but not
-        sent to the frontend — it doesn't affect what part of the sky is visible.
+        Roll from orientation.py (degrees). Used in the projection but not
+        returned — roll doesn't change what region of sky is visible.
     fov_deg : float
         Horizontal field of view in degrees (default 60°).
 
     Returns
     -------
-    dict with keys:
-        "stars"    : list of visible star dicts (x, y, name, magnitude, constellation)
-        "pointing" : {"yaw": float, "pitch": float}  — current device direction
-        "fov_deg"  : float — the FOV used, so the frontend can draw the correct window
+    list of dicts, one per visible star:
+        "x"             : float, normalised -1 (left) to +1 (right)
+        "y"             : float, normalised -1 (bottom) to +1 (top)
+        "name"          : str or None — proper name if one exists in HYG
+        "magnitude"     : float — brightness, lower is brighter
+        "constellation" : str — IAU constellation abbreviation e.g. "Ori"
     """
     projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
     visible_proj = projected[visible_mask]
     visible_meta = star_df[visible_mask].reset_index(drop=True)
 
-    stars = [
+    return [
         {
             "x":             float(visible_proj[i, 0]),   # -1 (left)  to +1 (right)
             "y":             float(visible_proj[i, 1]),   # -1 (bottom) to +1 (top)
@@ -311,12 +339,6 @@ def get_frontend_view(
         }
         for i in range(len(visible_proj))
     ]
-
-    return {
-        "stars":    stars,
-        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
-        "fov_deg":  fov_deg,
-    }
 
 def build_led_frame(
     pixels: np.ndarray,
