@@ -197,7 +197,6 @@ def record_sensor_gyro(x: float, y: float, z: float):
     # Call math function and stream result
     try:
         frontend_stars = get_frontend_stars(star_xyz, yaw, pitch, roll)
-        logger.info(f"frontend_stars: {frontend_stars}")
         web_ui.send_message('frontend_stars', frontend_stars)
     except Exception as e:
         logger.exception(f"math function error: {e}")
