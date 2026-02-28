@@ -279,7 +279,7 @@ def get_frontend_direction(yaw_deg: float, pitch_deg: float) -> dict:
         "fov_deg":  60.0,
     }
 
-def magnitude_to_radius(mag: float, min_radius: float = 1.0, max_radius: float = 6.0) -> float:
+def _magnitude_to_radius(mag: float, min_radius: float = 1.0, max_radius: float = 6.0) -> float:
     """
     Convert HYG apparent magnitude to a normalised dot radius for the frontend.
 
@@ -315,7 +315,7 @@ def magnitude_to_radius(mag: float, min_radius: float = 1.0, max_radius: float =
     return min_radius + normalised * (max_radius - min_radius)
 
 
-def ci_to_hex_color(ci: float) -> str:
+def _ci_to_hex_color(ci: float) -> str:
     """
     Convert a HYG B-V color index to a human-perceptible hex color.
 
@@ -430,8 +430,8 @@ def get_frontend_stars(
             "x":             float(visible_proj[i, 0]),
             "y":             float(visible_proj[i, 1]),
             "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
-            "radius":        magnitude_to_radius(visible_meta.at[i, "mag"]),
-            "color":         ci_to_hex_color(visible_meta.at[i, "ci"]),
+            "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
+            "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
             "constellation": visible_meta.at[i, "con"],
         }
         for i in range(len(visible_proj))
