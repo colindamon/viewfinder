@@ -4,13 +4,22 @@ import Sidebar from './Sidebar.jsx'
 
 const Home = () => {
   const [started, setStarted] = useState(false)
+  const [selectedStars, setSelectedStars] = useState([])
+  const [selectedConstellations, setSelectedConstellations] = useState([])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
       <div className="absolute inset-0 z-0">
-        <StarMap />
+        <StarMap selectedStarNames={selectedStars} />
       </div>
-      {started && <Sidebar />}
+      {started && (
+        <Sidebar
+          selectedStars={selectedStars}
+          setSelectedStars={setSelectedStars}
+          selectedConstellations={selectedConstellations}
+          setSelectedConstellations={setSelectedConstellations}
+        />
+      )}
       {!started && (
         <div
           className="absolute inset-0 z-1 flex cursor-pointer flex-col items-center justify-center text-center text-white"

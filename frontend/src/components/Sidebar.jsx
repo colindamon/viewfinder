@@ -26,22 +26,25 @@ const MOCK_CONSTELLATIONS = [
   'Draco',
 ]
 
-export default function Sidebar() {
+export default function Sidebar({
+  selectedStars = [],
+  setSelectedStars,
+  selectedConstellations = [],
+  setSelectedConstellations,
+}) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all') // 'all' | 'stars' | 'constellations'
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
-  const [selectedStars, setSelectedStars] = useState([])
-  const [selectedConstellations, setSelectedConstellations] = useState([])
 
   const toggleStar = (name) => {
-    setSelectedStars((prev) =>
+    setSelectedStars?.((prev) =>
       prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]
     )
   }
   const toggleConstellation = (name) => {
-    setSelectedConstellations((prev) =>
+    setSelectedConstellations?.((prev) =>
       prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
     )
   }
