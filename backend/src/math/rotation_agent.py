@@ -401,7 +401,7 @@ def get_frontend_stars(
         HYG x, y, z columns for N stars.
     star_df : pd.DataFrame
         The full HYG DataFrame, aligned row-for-row with star_xyz.
-        Expected columns: "proper", "mag", "con".
+        Expected columns: "proper", "mag", "ci", "con".
     yaw_deg : float
         Yaw from orientation.py (degrees).
     pitch_deg : float
@@ -418,7 +418,10 @@ def get_frontend_stars(
         "x"             : float, normalised -1 (left) to +1 (right)
         "y"             : float, normalised -1 (bottom) to +1 (top)
         "name"          : str or None — proper name if one exists in HYG
-        "magnitude"     : float — brightness, lower is brighter
+        "radius"        : float — dot size for rendering, range [1.0, 6.0],
+                          derived from magnitude (brighter = larger)
+        "color"         : str — hex color derived from B-V color index,
+                          e.g. "#ffffff" for white, "#ff7000" for deep red
         "constellation" : str — IAU constellation abbreviation e.g. "Ori"
     """
     projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
