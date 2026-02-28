@@ -21,28 +21,25 @@ from .rotation_agent import _project_stars
 # Star display utilities
 # ---------------------------------------------------------------------------
 
-def _magnitude_to_radius(mag: float, min_radius: float = 1.0, max_radius: float = 6.0) -> float:
+def _magnitude_to_radius(mag: float) -> float:
     """
-    Convert HYG apparent magnitude to a normalised dot radius for the frontend.
+    Convert HYG apparent magnitude to a normalised radius for the frontend.
 
     Magnitude is an inverted logarithmic scale — brighter stars have smaller
     (more negative) values. We clamp to the naked-eye visible range (-1.5 to
-    6.5), invert so brighter = larger radius, then normalise to [min_radius,
-    max_radius] so the frontend can use the value directly in pixels or SVG units.
+    6.5), invert so brighter = larger radius, then normalise to [0.0, 1.0]
+    so the frontend can scale it to whatever pixel size it needs.
 
     Parameters
     ----------
     mag : float
         Apparent magnitude from HYG "mag" column.
-    min_radius : float
-        Radius assigned to the faintest visible stars (default 1.0).
-    max_radius : float
-        Radius assigned to the brightest stars like Sirius (default 6.0).
 
     Returns
     -------
     float
-        Radius in the range [min_radius, max_radius].
+        Normalised radius in the range [0.0, 1.0].
+        0.0 = faintest naked-eye stars, 1.0 = brightest stars like Sirius.
     """
     MAG_BRIGHTEST = -1.5   # Sirius and the very brightest stars
     MAG_FAINTEST  =  6.5   # naked-eye limit
@@ -51,10 +48,7 @@ def _magnitude_to_radius(mag: float, min_radius: float = 1.0, max_radius: float 
     mag_clamped = max(MAG_BRIGHTEST, min(MAG_FAINTEST, mag))
 
     # Invert: faint (6.5) → 0.0, bright (-1.5) → 1.0
-    normalised = (MAG_FAINTEST - mag_clamped) / (MAG_FAINTEST - MAG_BRIGHTEST)
-
-    # Scale to desired radius range
-    return min_radius + normalised * (max_radius - min_radius)
+    return (MAG_FAINTEST - mag_clamped) / (MAG_FAINTEST - MAG_BRIGHTEST)
 
 
 def _ci_to_hex_color(ci: float) -> str:
@@ -114,7 +108,7 @@ def _ci_to_hex_color(ci: float) -> str:
             b = int(b0 + blend * (b1 - b0))
             return f"#{r:02x}{g:02x}{b:02x}"
 
-    return "#ffffff"  # fallback, should never be reached
+    return "#ffffff"  # fallback to white, should never be reached
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +144,7 @@ def get_frontend_direction(yaw_deg: float, pitch_deg: float) -> dict:
 
 def get_frontend_stars(
     star_xyz: np.ndarray,
-    # star_df,
+    star_df,
     yaw_deg: float,
     pitch_deg: float,
     roll_deg: float,
@@ -187,28 +181,26 @@ def get_frontend_stars(
     Returns
     -------
     list of dicts, one per visible star:
+        "name"          : str or None — proper name if one exists in HYG
         "x"             : float, normalised -1 (left) to +1 (right)
         "y"             : float, normalised -1 (bottom) to +1 (top)
-        "name"          : str or None — proper name if one exists in HYG
         "radius"        : float — dot size for rendering, range [1.0, 6.0],
                           derived from magnitude (brighter = larger)
         "color"         : str — hex color derived from B-V color index,
                           e.g. "#ffffff" for white, "#ff7000" for deep red
-        "constellation" : str — IAU constellation abbreviation e.g. "Ori"
     """
     projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
     visible_proj = projected[visible_mask]
-    # visible_meta = star_df[visible_mask].reset_index(drop=True)
+    visible_meta = star_df[visible_mask].reset_index(drop=True)
 
-    # return [
-    #     {
-    #         "x":             float(visible_proj[i, 0]),
-    #         "y":             float(visible_proj[i, 1]),
-    #         "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
-    #         "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
-    #         "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
-    #         "constellation": visible_meta.at[i, "con"],
-    #     }
-    #     for i in range(len(visible_proj))
-    # ]
-    return [{float(visible_proj[i, 0]), float(visible_proj[i, 1])} for i in range(len(visible_proj))]
+    return [
+        {
+            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
+            "x":             float(visible_proj[i, 0]),
+            "y":             float(visible_proj[i, 1]),
+            "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
+            "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
+            # TODO: constellation to be implemented later
+        }
+        for i in range(len(visible_proj))
+    ]
