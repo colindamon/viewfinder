@@ -1,17 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-
-const MOCK_STARS = [
-  'Sirius',
-  'Canopus',
-  'Arcturus',
-  'Vega',
-  'Capella',
-  'Rigel',
-  'Procyon',
-  'Betelgeuse',
-  'Altair',
-  'Aldebaran',
-]
+import { tmp_star_data } from './StarMap.jsx'
 
 const MOCK_CONSTELLATIONS = [
   'Orion',
@@ -27,6 +15,7 @@ const MOCK_CONSTELLATIONS = [
 ]
 
 export default function Sidebar({
+  stars = [],
   selectedStars = [],
   setSelectedStars,
   selectedConstellations = [],
@@ -49,7 +38,10 @@ export default function Sidebar({
     )
   }
 
-  const filteredStars = MOCK_STARS.filter((name) =>
+  const starNames = Array.isArray(stars) && stars.length > 0
+    ? stars.map((s) => s.name).filter(Boolean)
+    : tmp_star_data.map((s) => s.name)
+  const filteredStars = starNames.filter((name) =>
     name.toLowerCase().includes(search.toLowerCase())
   )
   const filteredConstellations = MOCK_CONSTELLATIONS.filter((name) =>

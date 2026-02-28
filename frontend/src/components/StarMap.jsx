@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
-// Array of { name, x, y, radius (0–1), color }
-const tmp_star_data = [
+// Array of { name, x, y, radius (0–1), color } — exported for use as fallback
+export const tmp_star_data = [
   { name: "Sirius", x: -0.406, y: 0.345, radius: 0.9, color: "#ffffff" },
   { name: "Canopus", x: -0.591, y: -0.717, radius: 0.85, color: "#f0f4ff" },
   { name: "Arcturus", x: -0.972, y: 0.042, radius: 0.7, color: "#fff4e6" },
@@ -26,7 +26,7 @@ const tmp_star_data = [
   { name: "Alcyone", x: -0.495, y: 0.233, radius: 0.52, color: "#e6eeff" },
 ];
 
-function normalizeStar(s) {
+export function normalizeStar(s) {
   if (s && typeof s === "object" && !Array.isArray(s) && "x" in s && "y" in s)
     return { name: s.name ?? "", x: s.x, y: s.y, radius: s.radius ?? 0.5, color: s.color ?? s.hex ?? "#ffffff" };
   if (Array.isArray(s)) {
@@ -36,11 +36,15 @@ function normalizeStar(s) {
   return { name: "", x: 0, y: 0, radius: 0.5, color: "#ffffff" };
 }
 
-export default function StarMap({ selectedStarNames = [] }) {
+const STARS_API = "http://127.0.0.1:8521/stars";
+
+export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const [stars, setStars] = useState([]);
+  const [localStars, setLocalStars] = useState([]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+  const stars = starsProp !== undefined && Array.isArray(starsProp) ? starsProp : localStars;
 
   // Size canvas to container
   useEffect(() => {
@@ -54,25 +58,24 @@ export default function StarMap({ selectedStarNames = [] }) {
     return () => ro.disconnect();
   }, []);
 
-  // Fetch stars from board
+  // Fetch stars only when not controlled by parent
   useEffect(() => {
+    if (starsProp !== undefined) return;
     async function fetchStars() {
       try {
-        const res = await fetch("http://127.0.0.1:8521/stars");
+        const res = await fetch(STARS_API);
         const data = await res.json();
         const list = Array.isArray(data) ? data : tmp_star_data;
-        setStars(list.map((s) => normalizeStar(s)));
+        setLocalStars(list.map((s) => normalizeStar(s)));
       } catch (e) {
-        setStars(tmp_star_data);
+        setLocalStars(tmp_star_data);
         console.error("Failed to fetch stars:", e);
       }
     }
     fetchStars();
-
-    // Poll every 100ms for live updates
     const interval = setInterval(fetchStars, 100);
     return () => clearInterval(interval);
-  }, []);
+  }, [starsProp]);
 
   // Draw stars
   useEffect(() => {
