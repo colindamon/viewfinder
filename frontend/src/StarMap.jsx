@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 const MOCK_STARS = Array.from({ length: 80 }, () => ({
   x: Math.random() * 800,
-  y: Math.random() * 600,
+  y: Math.random() * 600
 }));
 
 export default function StarMap() {
@@ -12,11 +12,11 @@ export default function StarMap() {
   // Replace this with your actual fetch call
   useEffect(() => {
     async function fetchStars() {
-      // const res = await fetch("/api/stars");
-      // const data = await res.json(); // expects [{ x, y }, ...] or [[x, y], ...]
-      // setStars(data);
+      const res = await fetch("/api/stars");
+      const data = await res.json(); // expects [{ x, y }, ...] or [[x, y], ...]
+      setStars(data);
 
-      setStars(MOCK_STARS); // remove when using real data
+    //   setStars(MOCK_STARS); // remove when using real data
     }
     fetchStars();
   }, []);
@@ -48,12 +48,19 @@ export default function StarMap() {
   }, [stars]);
 
   return (
-    <div style={{ background: "#000", display: "inline-block", borderRadius: 8 }}>
+    <div
+      style={{
+        background: "#000",
+        width: "100vw",
+        height: "100vh",
+        margin: 0,
+        padding: 0,
+        overflow: "hidden",
+      }}
+    >
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
-        style={{ display: "block", borderRadius: 8 }}
+        style={{ display: "block" }}
       />
     </div>
   );
