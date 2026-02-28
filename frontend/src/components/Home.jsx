@@ -6,7 +6,7 @@ const Home = () => {
   const [started, setStarted] = useState(false)
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
+    <div className="relative h-screen w-screen overflow-hidden bg-black">
       <div className="absolute inset-0 z-0">
         <StarMap />
       </div>

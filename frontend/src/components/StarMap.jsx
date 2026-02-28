@@ -1,21 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function StarMap() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [stars, setStars] = useState([]);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
-  // Resize canvas to fill window
+  // Size canvas to container
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () =>
+      setDimensions({ width: el.clientWidth, height: el.clientHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Fetch stars from board
@@ -24,9 +24,10 @@ export default function StarMap() {
       try {
         const res = await fetch("http://127.0.0.1:1714/stars");
         const data = await res.json();
-        setStars(data);
+        setStars(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error("Failed to fetch stars:", e);
+        setStars([]);
       }
     }
     fetchStars();
@@ -39,7 +40,7 @@ export default function StarMap() {
   // Draw stars
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || stars.length === 0) return;
+    if (!canvas || !Array.isArray(stars) || stars.length === 0) return;
 
     const { width, height } = dimensions;
     canvas.width = width;
