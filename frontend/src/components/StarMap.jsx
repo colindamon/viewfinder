@@ -68,11 +68,18 @@ export default function StarMap() {
   return (
     <div
       ref={containerRef}
-      className="h-full w-full overflow-hidden bg-black p-0 m-0"
+      style={{
+        background: "#000",
+        width: "100%",
+        height: "100%",
+        margin: 0,
+        padding: 0,
+        overflow: "hidden",
+      }}
     >
       <canvas
         ref={canvasRef}
-        className="block h-full w-full"
+        style={{ display: "block", width: "100%", height: "100%" }}
         width={dimensions.width}
         height={dimensions.height}
       />
