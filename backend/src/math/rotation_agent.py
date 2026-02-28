@@ -207,6 +207,10 @@ def normalize_to_led_pixels(
 # ---------------------------------------------------------------------------
 # High-level convenience function
 # ---------------------------------------------------------------------------
+def _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg):
+    camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
+    camera_coords = transform_stars_to_camera(star_xyz, camera_matrix)
+    return project_to_normalized_2d(camera_coords, fov_deg)
 
 def get_led_view(
     star_xyz: np.ndarray,
@@ -244,13 +248,75 @@ def get_led_view(
     visible_mask : np.ndarray, shape (N,), dtype bool
         True for every star that landed on the display.
     """
-    camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
-    camera_coords = transform_stars_to_camera(star_xyz, camera_matrix)
-    projected, visible_mask = project_to_normalized_2d(camera_coords, fov_deg)
+    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
     pixels = normalize_to_led_pixels(projected, visible_mask, cols, rows)
 
     return pixels, visible_mask
 
+def get_frontend_view(
+    star_xyz: np.ndarray,
+    star_df,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float,
+    fov_deg: float = 60.0,
+) -> dict:
+    """
+    Full pipeline: HYG xyz → frontend-ready sky view payload.
+
+    Counterpart to get_led_view (stars_to_pixels). Where get_led_view produces
+    a pixel map for the LED matrix, this produces a JSON-serialisable dict
+    that the FastAPI server returns directly to the frontend.
+
+    The frontend receives normalised (x, y) coordinates in [-1, 1] so it can
+    scale them to any screen size without knowing the display resolution.
+    FOV is intentionally wider than the LED matrix (60° vs 30°) — the frontend
+    has far more screen real-estate to work with.
+
+    Parameters
+    ----------
+    star_xyz : np.ndarray, shape (N, 3)
+        HYG x, y, z columns for N stars.
+    star_df : pd.DataFrame
+        The full HYG DataFrame, aligned row-for-row with star_xyz.
+        Expected columns: "proper", "mag", "con".
+    yaw_deg : float
+        Yaw from orientation.py (degrees).
+    pitch_deg : float
+        Pitch from orientation.py (degrees).
+    roll_deg : float
+        Roll from orientation.py (degrees). Used for the projection but not
+        sent to the frontend — it doesn't affect what part of the sky is visible.
+    fov_deg : float
+        Horizontal field of view in degrees (default 60°).
+
+    Returns
+    -------
+    dict with keys:
+        "stars"    : list of visible star dicts (x, y, name, magnitude, constellation)
+        "pointing" : {"yaw": float, "pitch": float}  — current device direction
+        "fov_deg"  : float — the FOV used, so the frontend can draw the correct window
+    """
+    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
+    visible_proj = projected[visible_mask]
+    visible_meta = star_df[visible_mask].reset_index(drop=True)
+
+    stars = [
+        {
+            "x":             float(visible_proj[i, 0]),   # -1 (left)  to +1 (right)
+            "y":             float(visible_proj[i, 1]),   # -1 (bottom) to +1 (top)
+            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
+            "magnitude":     float(visible_meta.at[i, "mag"]),
+            "constellation": visible_meta.at[i, "con"],
+        }
+        for i in range(len(visible_proj))
+    ]
+
+    return {
+        "stars":    stars,
+        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
+        "fov_deg":  fov_deg,
+    }
 
 def build_led_frame(
     pixels: np.ndarray,
