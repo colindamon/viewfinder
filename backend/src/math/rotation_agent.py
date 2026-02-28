@@ -60,7 +60,7 @@ def rot_z(angle_rad: float) -> np.ndarray:
     ], dtype=float)
 
 
-def build_camera_rotation(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
+def gyro_to_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
     """
     Build the full camera rotation matrix from Modulino yaw, pitch, roll (degrees).
 
@@ -84,7 +84,7 @@ def build_camera_rotation(yaw_deg: float, pitch_deg: float, roll_deg: float) -> 
 # Core projection pipeline
 # ---------------------------------------------------------------------------
 
-def world_to_camera(
+def transform_stars_to_camera(
     star_xyz: np.ndarray,
     camera_matrix: np.ndarray
 ) -> np.ndarray:
@@ -96,7 +96,7 @@ def world_to_camera(
     star_xyz : np.ndarray, shape (N, 3)
         HYG x, y, z columns for N stars.
     camera_matrix : np.ndarray, shape (3, 3)
-        Camera rotation matrix from build_camera_rotation().
+        Camera rotation matrix from gyro_to_rotation_matrix().
 
     Returns
     -------
@@ -114,7 +114,7 @@ def world_to_camera(
     return camera_coords
 
 
-def perspective_project(
+def project_to_normalized_2d(
     camera_coords: np.ndarray,
     fov_deg: float = 30.0
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -126,7 +126,7 @@ def perspective_project(
     Parameters
     ----------
     camera_coords : np.ndarray, shape (N, 3)
-        Output of world_to_camera().
+        Output of transform_stars_to_camera().
     fov_deg : float
         Horizontal field of view in degrees. A smaller value = more zoomed in.
         Typical LED matrix FOV: 20–40°.
@@ -164,7 +164,7 @@ def perspective_project(
     return projected, in_fov
 
 
-def project_to_display(
+def normalize_to_led_pixels(
     projected: np.ndarray,
     visible_mask: np.ndarray,
     cols: int = 12,
@@ -176,7 +176,7 @@ def project_to_display(
     Parameters
     ----------
     projected : np.ndarray, shape (N, 2)
-        Output of perspective_project().
+        Output of project_to_normalized_2d().
     visible_mask : np.ndarray, shape (N,), dtype bool
         Only visible stars are mapped; others are returned as (-1, -1).
     cols : int
@@ -207,8 +207,12 @@ def project_to_display(
 # ---------------------------------------------------------------------------
 # High-level convenience function
 # ---------------------------------------------------------------------------
+def _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg):
+    camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
+    camera_coords = transform_stars_to_camera(star_xyz, camera_matrix)
+    return project_to_normalized_2d(camera_coords, fov_deg)
 
-def stars_to_pixels(
+def get_led_view(
     star_xyz: np.ndarray,
     yaw_deg: float,
     pitch_deg: float,
@@ -244,13 +248,75 @@ def stars_to_pixels(
     visible_mask : np.ndarray, shape (N,), dtype bool
         True for every star that landed on the display.
     """
-    camera_matrix = build_camera_rotation(yaw_deg, pitch_deg, roll_deg)
-    camera_coords = world_to_camera(star_xyz, camera_matrix)
-    projected, visible_mask = perspective_project(camera_coords, fov_deg)
-    pixels = project_to_display(projected, visible_mask, cols, rows)
+    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
+    pixels = normalize_to_led_pixels(projected, visible_mask, cols, rows)
 
     return pixels, visible_mask
 
+def get_frontend_view(
+    star_xyz: np.ndarray,
+    star_df,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float,
+    fov_deg: float = 60.0,
+) -> dict:
+    """
+    Full pipeline: HYG xyz → frontend-ready sky view payload.
+
+    Counterpart to get_led_view (stars_to_pixels). Where get_led_view produces
+    a pixel map for the LED matrix, this produces a JSON-serialisable dict
+    that the FastAPI server returns directly to the frontend.
+
+    The frontend receives normalised (x, y) coordinates in [-1, 1] so it can
+    scale them to any screen size without knowing the display resolution.
+    FOV is intentionally wider than the LED matrix (60° vs 30°) — the frontend
+    has far more screen real-estate to work with.
+
+    Parameters
+    ----------
+    star_xyz : np.ndarray, shape (N, 3)
+        HYG x, y, z columns for N stars.
+    star_df : pd.DataFrame
+        The full HYG DataFrame, aligned row-for-row with star_xyz.
+        Expected columns: "proper", "mag", "con".
+    yaw_deg : float
+        Yaw from orientation.py (degrees).
+    pitch_deg : float
+        Pitch from orientation.py (degrees).
+    roll_deg : float
+        Roll from orientation.py (degrees). Used for the projection but not
+        sent to the frontend — it doesn't affect what part of the sky is visible.
+    fov_deg : float
+        Horizontal field of view in degrees (default 60°).
+
+    Returns
+    -------
+    dict with keys:
+        "stars"    : list of visible star dicts (x, y, name, magnitude, constellation)
+        "pointing" : {"yaw": float, "pitch": float}  — current device direction
+        "fov_deg"  : float — the FOV used, so the frontend can draw the correct window
+    """
+    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
+    visible_proj = projected[visible_mask]
+    visible_meta = star_df[visible_mask].reset_index(drop=True)
+
+    stars = [
+        {
+            "x":             float(visible_proj[i, 0]),   # -1 (left)  to +1 (right)
+            "y":             float(visible_proj[i, 1]),   # -1 (bottom) to +1 (top)
+            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
+            "magnitude":     float(visible_meta.at[i, "mag"]),
+            "constellation": visible_meta.at[i, "con"],
+        }
+        for i in range(len(visible_proj))
+    ]
+
+    return {
+        "stars":    stars,
+        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
+        "fov_deg":  fov_deg,
+    }
 
 def build_led_frame(
     pixels: np.ndarray,
@@ -264,9 +330,9 @@ def build_led_frame(
     Parameters
     ----------
     pixels : np.ndarray, shape (N, 2)
-        Output of stars_to_pixels() or project_to_display().
+        Output of get_led_view() or normalize_to_led_pixels().
     visible_mask : np.ndarray, shape (N,)
-        Visibility mask from stars_to_pixels().
+        Visibility mask from get_led_view().
     cols : int
         LED matrix columns.
     rows : int
