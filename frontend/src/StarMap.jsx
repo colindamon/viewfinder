@@ -1,45 +1,67 @@
-import { useState, useEffect, useRef } from "react";
-
-const MOCK_STARS = Array.from({ length: 80 }, () => ({
-  x: Math.random() * 800,
-  y: Math.random() * 600
-}));
+import { useState, useEffect, useRef, useCallback } from "react";
 
 export default function StarMap() {
   const canvasRef = useRef(null);
   const [stars, setStars] = useState([]);
 
-  // Replace this with your actual fetch call
+  // Resize canvas to fill window
   useEffect(() => {
-    async function fetchStars() {
-      const res = await fetch("/api/stars");
-      const data = await res.json(); // expects [{ x, y }, ...] or [[x, y], ...]
-      setStars(data);
-
-    //   setStars(MOCK_STARS); // remove when using real data
-    }
-    fetchStars();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
   }, []);
 
+  // Fetch stars from board
+  useEffect(() => {
+    async function fetchStars() {
+      try {
+        const res = await fetch("http://127.0.0.1:1714/stars");
+        const data = await res.json();
+        setStars(data);
+      } catch (e) {
+        console.error("Failed to fetch stars:", e);
+      }
+    }
+    fetchStars();
+
+    // Poll every 100ms for live updates
+    const interval = setInterval(fetchStars, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Draw stars
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || stars.length === 0) return;
 
     const ctx = canvas.getContext("2d");
-    const { width, height } = canvas;
+    const W = canvas.width;
+    const H = canvas.height;
 
-    // Clear
     ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, W, H);
 
-    // Draw stars
     stars.forEach((star) => {
-      // Support both { x, y } objects and [x, y] arrays from the backend
-      const x = Array.isArray(star) ? star[0] : star.x;
-      const y = Array.isArray(star) ? star[1] : star.y;
+      // Support both [x, y] arrays and {x, y} objects
+      const rawX = Array.isArray(star) ? star[0] : star.x;
+      const rawY = Array.isArray(star) ? star[1] : star.y;
+
+      // Scale from -1..1 to canvas pixels
+      // x: -1 = left edge, 1 = right edge
+      // y: -1 = bottom, 1 = top (flip because canvas y goes down)
+      const x = ((rawX + 1) / 2) * W;
+      const y = ((1 - rawY) / 2) * H;
+
+      // Filter out stars outside the canvas
+      if (x < 0 || x > W || y < 0 || y > H) return;
 
       const radius = Math.random() * 1.5 + 0.5;
-
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.5})`;

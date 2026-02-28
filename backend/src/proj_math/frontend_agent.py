@@ -200,14 +200,16 @@ def get_frontend_stars(
     visible_proj = projected[visible_mask]
     visible_meta = star_df[visible_mask].reset_index(drop=True)
 
-    return [
-        {
-            "x":             float(visible_proj[i, 0]),
-            "y":             float(visible_proj[i, 1]),
-            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
-            "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
-            "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
-            "constellation": visible_meta.at[i, "con"],
-        }
-        for i in range(len(visible_proj))
-    ]
+    # return [
+    #     {
+    #         "x":             float(visible_proj[i, 0]),
+    #         "y":             float(visible_proj[i, 1]),
+    #         "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
+    #         "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
+    #         "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
+    #         "constellation": visible_meta.at[i, "con"],
+    #     }
+    #     for i in range(len(visible_proj))
+    # ]
+    return [[float(visible_proj[i, 0]), float(visible_proj[i, 1])] for i in range(len(visible_proj))]
+
