@@ -46,5 +46,33 @@ def load_star_df(csv_path: str) -> pd.DataFrame:
     return star_df
 
 
+def get_star_xyz_by_id(star_id: int, star_df: pd.DataFrame, star_xyz: np.ndarray) -> np.ndarray:
+    """
+    Look up a single star's world-space coordinates by HYG id.
+
+    Uses star_df to find the row index of the target star, then slices
+    star_xyz at that index. This works because both are always loaded from
+    the same CSV in the same row order via load_star_xyz() and load_star_df().
+
+    Parameters
+    ----------
+    star_id : int
+        The HYG id of the target star.
+    star_df : pd.DataFrame
+        Output of load_star_df(). Must contain "id" column.
+    star_xyz : np.ndarray, shape (N, 3)
+        Output of load_star_xyz(). Row-aligned with star_df.
+
+    Returns
+    -------
+    np.ndarray, shape (3,)
+        The star's x, y, z coordinates, or None if id not found.
+    """
+    matches = star_df.index[star_df["id"] == star_id].tolist()
+    if not matches:
+        return None
+    return star_xyz[matches[0]]
+
+
 if __name__ == "__main__":
     print(load_star_xyz('/Users/aish/Documents/Workspace/Hackathons/IrvineHacks2026/viewfinder/backend/src/assets/named_stars.csv'))
