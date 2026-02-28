@@ -8,6 +8,8 @@ from arduino.app_bricks.motion_detection import MotionDetection
 import pandas as pd
 from collections import deque
 import time
+from fastapi.middleware.cors import CORSMiddleware
+
 
 CONFIDENCE = 0.4
 motion_detection = MotionDetection(confidence=CONFIDENCE)
@@ -25,14 +27,17 @@ detection_df = pd.DataFrame(
 )
 
 web_ui = WebUI()
+web_ui.app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows all origins; change to specific URLs for better security
+    allow_credentials=True,
+    allow_methods=["*"], # Allows GET, POST, OPTIONS, etc.
+    allow_headers=["*"], # Allows all headers
+)
 
 def _get_detection():
     return detection_df.to_dict(orient='records')[0]
 
-def test_print():
-    return {"text": "this is some beautiful json that is cool and will be a great test"}
-
-web_ui.expose_api("GET", "/test", test_print)
 web_ui.expose_api("GET", "/detection", _get_detection)
 
 web_ui.on_connect(
