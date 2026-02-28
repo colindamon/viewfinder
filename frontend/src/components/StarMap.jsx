@@ -7,13 +7,13 @@ export const tmp_star_data = [
   { name: "Arcturus", x: -0.972, y: 0.042, radius: 0.7, color: "#fff4e6" },
   { name: "Vega", x: 0.893, y: -0.616, radius: 0.8, color: "#e8f4ff" },
   { name: "Capella", x: 0.460, y: 0.564, radius: 0.75, color: "#fff8dc" },
-  { name: "Rigel", x: 0.707, y: 0.420, radius: 0.95, color: "#e6f2ff" },
+  { name: "Rigel", x: 0.707, y: 0.420, radius: 0.95, color: "#FF69B4" },
   { name: "Procyon", x: -0.318, y: -0.207, radius: 0.65, color: "#f5f5ff" },
   { name: "Betelgeuse", x: -0.153, y: 0.182, radius: 0.88, color: "#ffddd0" },
   { name: "Altair", x: 0.542, y: 0.546, radius: 0.7, color: "#faf0e6" },
   { name: "Aldebaran", x: 0.809, y: -0.190, radius: 0.78, color: "#ffebcd" },
   { name: "Spica", x: -0.223, y: -0.427, radius: 0.6, color: "#e0f0ff" },
-  { name: "Antares", x: 0.967, y: 0.834, radius: 0.82, color: "#FF69B4" },
+  { name: "Antares", x: 0.967, y: 0.834, radius: 0.82, color: "#ffddd0" },
   { name: "Pollux", x: -0.436, y: 0.364, radius: 0.68, color: "#fff0e6" },
   { name: "Fomalhaut", x: -0.436, y: 0.364, radius: 0.55, color: "#f0f8ff" },
   { name: "Deneb", x: 0.895, y: -0.165, radius: 0.92, color: "#e6f0ff" },
@@ -24,11 +24,14 @@ export const tmp_star_data = [
   { name: "Mira", x: -0.680, y: -0.535, radius: 0.45, color: "#ffd4c4" },
   { name: "Polaris", x: -0.259, y: 0.941, radius: 0.74, color: "#f0f4ff" },
   { name: "Alcyone", x: -0.495, y: 0.233, radius: 0.52, color: "#e6eeff" },
+  { name: "", x: 0, y: 0, radius: 0.99, color: "#e6eeff" },
 ];
 
 export function normalizeStar(s) {
-  if (s && typeof s === "object" && !Array.isArray(s) && "x" in s && "y" in s)
-    return { name: s.name ?? "", x: s.x, y: s.y, radius: s.radius ?? 0.5, color: s.color ?? s.hex ?? "#ffffff" };
+  if (s && typeof s === "object" && !Array.isArray(s) && "x" in s && "y" in s) {
+    const name = s.name ?? s.star_name ?? s.id ?? (typeof s.label === "string" ? s.label : "");
+    return { name: String(name), x: s.x, y: s.y, radius: s.radius ?? 0.5, color: s.color ?? s.hex ?? "#ffffff" };
+  }
   if (Array.isArray(s)) {
     if (s.length >= 5) return { name: s[0], x: s[1], y: s[2], radius: s[3], color: s[4] };
     if (s.length >= 2) return { name: "", x: s[0], y: s[1], radius: 0.5, color: "#ffffff" };
@@ -98,19 +101,20 @@ export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
       const rawX = star.x ?? 0;
       const rawY = star.y ?? 0;
       const radiusNorm = star.radius ?? 0.5;
-      const color = star.color ?? star.hex ?? "#ffffff";
+      const color = star.color ?? "#ffffff";
 
       const x = ((rawX + 1) / 2) * W;
       const y = ((1 - rawY) / 2) * H;
 
       if (x < 0 || x > W || y < 0 || y > H) return;
 
-      const radius = Math.max(0.5, radiusNorm * 3);
+      const radius = radiusNorm * 4;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-
+      
+      //adjust radius to whatever
       if (showLabels && star.name && selectedStarNames.includes(star.name)) {
         ctx.font = "14px 'Sour Gummy', cursive";
         ctx.textAlign = "center";

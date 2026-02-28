@@ -54,6 +54,19 @@ export default function Sidebar({
   const filterLabels = { all: 'All', stars: 'Stars', constellations: 'Constellations' }
 
   useEffect(() => {
+    if (!Array.isArray(stars) || stars.length === 0) return
+    const largeStarNames = stars
+      .filter((s) => (s.radius ?? 0) > 0.90 && s.name)
+      .map((s) => s.name)
+    if (largeStarNames.length === 0) return
+    setSelectedStars?.((prev) => {
+      const current = Array.isArray(prev) ? prev : []
+      const next = [...new Set([...current, ...largeStarNames])]
+      return next.length === current.length ? current : next
+    })
+  }, [stars, setSelectedStars])
+
+  useEffect(() => {
     if (!filterOpen) return
     const handleClickOutside = (e) => {
       if (filterRef.current && !filterRef.current.contains(e.target)) setFilterOpen(false)
@@ -218,7 +231,7 @@ export default function Sidebar({
                     <button
                       type="button"
                       onClick={() => toggleStar(name)}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                      className={`w-full rounded-md border px-3 py-4 text-left text-sm transition-colors ${
                         selectedStars.includes(name)
                           ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
                           : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
@@ -269,6 +282,53 @@ export default function Sidebar({
             </p>
           )}
         </div>
+
+        {/* Selected at bottom: Stars and Constellations separate */}
+        {(selectedStars?.length > 0 || selectedConstellations?.length > 0) && (
+          <div className="border-t border-blue-900/50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-blue-300/70">
+              Selected
+            </p>
+            {selectedStars?.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
+                  Stars
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedStars.map((name) => (
+                    <button
+                      key={`star-${name}`}
+                      type="button"
+                      onClick={() => toggleStar(name)}
+                      className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                    >
+                      {name} ×
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedConstellations?.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
+                  Constellations
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedConstellations.map((name) => (
+                    <button
+                      key={`const-${name}`}
+                      type="button"
+                      onClick={() => toggleConstellation(name)}
+                      className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                    >
+                      {name} ×
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </aside>
     </>
   )
