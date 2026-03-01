@@ -213,6 +213,79 @@ def _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg):
     return project_to_normalized_2d(camera_coords, fov_deg)
 
 
+def get_direction_to_star(
+    star_xyz_single: np.ndarray,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float,
+) -> dict:
+    """
+    Returns a 2D vector pointing toward a target star relative to the current
+    camera orientation. Intended to be polled in a while loop alongside
+    get_led_view() to drive an arrow on the LED matrix.
+
+    If the star is within the current FOV the arrow vector will be near (0, 0).
+    If the star is off to the left, x will be negative. If above, y will be
+    positive. The frontend and LED matrix can use the angle and magnitude of
+    the vector to determine arrow direction and urgency.
+
+    Parameters
+    ----------
+    star_xyz_single : np.ndarray, shape (3,)
+        World-space coordinates of the target star from get_star_xyz_by_id().
+    yaw_deg : float
+        Yaw from orientation.py (degrees).
+    pitch_deg : float
+        Pitch from orientation.py (degrees).
+    roll_deg : float
+        Roll from orientation.py (degrees).
+
+    Returns
+    -------
+    dict with keys:
+        "dx"       : float — horizontal offset, negative = star is left, positive = right
+        "dy"       : float — vertical offset, negative = star is below, positive = above
+        "angle"    : float — direction of the arrow in degrees, 0° = right, 90° = up
+        "distance" : float — angular distance to the star in degrees, useful for
+                     scaling arrow intensity or deciding when to stop showing the arrow
+        "in_view"  : bool  — True if the star is currently within the default FOV
+    """
+    # Normalise the target star to a unit vector
+    norm = np.linalg.norm(star_xyz_single)
+    if norm == 0:
+        return {"dx": 0.0, "dy": 0.0, "angle": 0.0, "distance": 0.0, "in_view": False}
+    unit_star = star_xyz_single / norm
+
+    # Rotate into camera space using the current orientation
+    camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
+    star_camera = camera_matrix @ unit_star  # shape (3,)
+
+    # dx, dy are the horizontal and vertical offsets in camera space
+    # star_camera[2] is depth — positive means star is in front of camera
+    dx = float(star_camera[0])
+    dy = float(star_camera[1])
+    dz = float(star_camera[2])
+
+    # Angular distance from the camera's forward axis to the star (degrees)
+    # Clamp for numerical safety before arccos
+    dot = float(np.clip(dz, -1.0, 1.0))
+    distance_deg = float(np.degrees(np.arccos(dot)))
+
+    # 2D arrow angle: atan2(y, x) gives angle in radians from +x axis
+    angle_deg = float(np.degrees(np.arctan2(dy, dx)))
+
+    # In view if the star is in front of camera and within default LED FOV (30°)
+    in_view = dz > 0 and distance_deg <= 15.0  # 15° = half of 30° FOV
+
+    return {
+        "dx":       dx,
+        "dy":       dy,
+        "angle":    angle_deg,
+        "distance": distance_deg,
+        "in_view":  in_view,
+    }
+
+
 def get_led_view(
     star_xyz: np.ndarray,
     yaw_deg: float,
