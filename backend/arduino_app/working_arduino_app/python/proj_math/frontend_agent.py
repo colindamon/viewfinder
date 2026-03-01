@@ -1,103 +1,43 @@
 """
 frontend_agent.py — Viewfinder
 --------------------------------
-Frontend-facing output functions and star display utilities.
+Frontend-facing helpers for the star rendering pipeline.
 
-Consumes orientation data from orientation.py and projection results
-from rotation_agent.py to produce JSON-serialisable payloads for the
-React frontend.
-
-Imports
--------
-    from rotation_agent import _project_stars
+Consumes pre-rotated camera-space coordinates (from rotation_agent) and
+star metadata (from read_data) to produce JSON-serialisable payloads for
+the React frontend.
 """
 
 import math
 import numpy as np
-from .rotation_agent import _project_stars
+from .rotation_agent import project_to_normalized_2d
 
 
 # ---------------------------------------------------------------------------
 # Star display utilities
 # ---------------------------------------------------------------------------
 
-def _magnitude_to_radius(mag: float) -> float:
-    """
-    Convert HYG apparent magnitude to a normalised radius for the frontend.
-
-    Magnitude is an inverted logarithmic scale — brighter stars have smaller
-    (more negative) values. We clamp to the naked-eye visible range (-1.5 to
-    6.5), invert so brighter = larger radius, then normalise to [0.0, 1.0]
-    so the frontend can scale it to whatever pixel size it needs.
-
-    Parameters
-    ----------
-    mag : float
-        Apparent magnitude from HYG "mag" column.
-
-    Returns
-    -------
-    float
-        Normalised radius in the range [0.0, 1.0].
-        0.0 = faintest naked-eye stars, 1.0 = brightest stars like Sirius.
-    """
-    MAG_BRIGHTEST = -1.5   # Sirius and the very brightest stars
-    MAG_FAINTEST  =  6.5   # naked-eye limit
-
-    # Clamp to the visible range
+def _magnitude_to_radius(mag: float, min_radius: float = 1.0, max_radius: float = 6.0) -> float:
+    MAG_BRIGHTEST = -1.5
+    MAG_FAINTEST = 6.5
     mag_clamped = max(MAG_BRIGHTEST, min(MAG_FAINTEST, mag))
-
-    # Invert: faint (6.5) → 0.0, bright (-1.5) → 1.0
-    return (MAG_FAINTEST - mag_clamped) / (MAG_FAINTEST - MAG_BRIGHTEST)
+    normalised = (MAG_FAINTEST - mag_clamped) / (MAG_FAINTEST - MAG_BRIGHTEST)
+    return min_radius + normalised * (max_radius - min_radius)
 
 
 def _ci_to_hex_color(ci: float) -> str:
-    """
-    Convert a HYG B-V color index to a human-perceptible hex color.
-
-    B-V range: -0.4 (blue-white, ~40,000 K) to +2.0 (deep red, ~2,000 K).
-    Notable reference points:
-        -0.4  → blue-white  (#9bb4ff)  O/B-type stars e.g. Rigel
-         0.0  → white       (#ffffff)  A-type, Vega
-        +0.65 → yellow      (#fff4e0)  G-type, the Sun
-        +1.5  → orange-red  (#ffcc6f)  K/M-type e.g. Arcturus
-        +2.0  → deep red    (#ff7000)  M-type e.g. Betelgeuse
-
-    NaN is treated as unknown and returns white (#ffffff) as a safe default.
-
-    Parameters
-    ----------
-    ci : float
-        B-V color index from HYG "ci" column. May be NaN for some stars.
-
-    Returns
-    -------
-    str
-        Hex color string e.g. "#ff7000".
-    """
-    # NaN fallback — many HYG entries lack CI data
     if ci is None or (isinstance(ci, float) and math.isnan(ci)):
         return "#ffffff"
-
-    CI_MIN = -0.4   # bluest stars
-    CI_MAX =  2.0   # reddest stars
-
-    # Clamp to known range
+    CI_MIN, CI_MAX = -0.4, 2.0
     ci_clamped = max(CI_MIN, min(CI_MAX, ci))
-
-    # Normalise to [0, 1]:  0 = blue end, 1 = red end
     t = (ci_clamped - CI_MIN) / (CI_MAX - CI_MIN)
-
-    # Colour stops across the B-V range (t, R, G, B)
     stops = [
-        (0.00, 155, 176, 255),   # -0.4  blue-white
-        (0.17, 255, 255, 255),   #  0.0  white (Vega)
-        (0.44, 255, 244, 232),   # +0.65 pale yellow (Sun)
-        (0.79, 255, 210, 161),   # +1.5  orange
-        (1.00, 255, 112,  16),   # +2.0  deep red
+        (0.00, 155, 176, 255),
+        (0.17, 255, 255, 255),
+        (0.44, 255, 244, 232),
+        (0.79, 255, 210, 161),
+        (1.00, 255, 112, 16),
     ]
-
-    # Find which two stops we're between and linearly interpolate
     for i in range(len(stops) - 1):
         t0, r0, g0, b0 = stops[i]
         t1, r1, g1, b1 = stops[i + 1]
@@ -107,100 +47,124 @@ def _ci_to_hex_color(ci: float) -> str:
             g = int(g0 + blend * (g1 - g0))
             b = int(b0 + blend * (b1 - b0))
             return f"#{r:02x}{g:02x}{b:02x}"
-
-    return "#ffffff"  # fallback to white, should never be reached
+    return "#ffffff"
 
 
 # ---------------------------------------------------------------------------
 # Frontend output functions
 # ---------------------------------------------------------------------------
 
-def get_frontend_direction(yaw_deg: float, pitch_deg: float) -> dict:
+def get_frontend_stars(camera_coords, star_df, fov_deg=60.0):
     """
-    Returns the device's current pointing direction for the frontend.
+    Project pre-rotated camera-space coordinates to a frontend-ready star list.
 
-    Called whenever the Arduino sends a new orientation reading, independently
-    of the star list. The frontend uses this to draw a bounding box on its
-    full sky map showing where the device is currently aimed.
+    Unlike the rotation_agent version, this accepts already-transformed
+    camera_coords so the rotation matrix multiply is never duplicated.
 
     Parameters
     ----------
-    yaw_deg : float
-        Yaw from orientation.py (degrees).
-    pitch_deg : float
-        Pitch from orientation.py (degrees).
-
-    Returns
-    -------
-    dict with keys:
-        "pointing" : {"yaw": float, "pitch": float}
-        "fov_deg"  : float — the device's FOV so the frontend can size the bounding box
-    """
-    return {
-        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
-        "fov_deg":  60.0,
-    }
-
-
-def get_frontend_stars(
-    star_xyz: np.ndarray,
-    star_df,
-    yaw_deg: float,
-    pitch_deg: float,
-    roll_deg: float,
-    fov_deg: float = 60.0,
-) -> list:
-    """
-    Full pipeline: HYG xyz → frontend-ready list of visible stars.
-
-    The primary output function for the React frontend. Can be called both
-    when the Arduino is active (live orientation) and when the user is
-    browsing the sky map independently on the laptop. Returns only the stars
-    currently in view — the frontend never touches the star database directly.
-
-    FOV is intentionally wider than get_led_view (60° vs 30°) since the
-    frontend has a full screen to work with.
-
-    Parameters
-    ----------
-    star_xyz : np.ndarray, shape (N, 3)
-        HYG x, y, z columns for N stars.
+    camera_coords : np.ndarray, shape (N, 3)
+        Stars already in camera space (output of transform_stars_to_camera).
     star_df : pd.DataFrame
-        The full HYG DataFrame, aligned row-for-row with star_xyz.
-        Expected columns: "proper", "mag", "ci", "con".
-    yaw_deg : float
-        Yaw from orientation.py (degrees).
-    pitch_deg : float
-        Pitch from orientation.py (degrees).
-    roll_deg : float
-        Roll from orientation.py (degrees). Used in the projection but not
-        returned — roll doesn't change what region of sky is visible.
+        Star metadata aligned row-for-row with camera_coords.
+        Expected columns: "hip", "proper", "mag", "ci" (ci optional).
     fov_deg : float
-        Horizontal field of view in degrees (default 60°).
+        Field of view in degrees (default 60).
 
     Returns
     -------
-    list of dicts, one per visible star:
-        "name"          : str or None — proper name if one exists in HYG
-        "x"             : float, normalised -1 (left) to +1 (right)
-        "y"             : float, normalised -1 (bottom) to +1 (top)
-        "radius"        : float — dot size for rendering, range [1.0, 6.0],
-                          derived from magnitude (brighter = larger)
-        "color"         : str — hex color derived from B-V color index,
-                          e.g. "#ffffff" for white, "#ff7000" for deep red
+    list[dict] — visible stars with x, y, name, hip, radius, color.
     """
-    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
-    visible_proj = projected[visible_mask]
-    visible_meta = star_df[visible_mask].reset_index(drop=True)
+    projected, visible_mask = project_to_normalized_2d(camera_coords, fov_deg)
 
+    vis_idx = np.where(visible_mask)[0]
+    if len(vis_idx) == 0:
+        return []
+
+    vis_x = projected[vis_idx, 0]
+    vis_y = projected[vis_idx, 1]
+    vis_df = star_df.iloc[vis_idx]
+
+    names = vis_df["proper"].values
+    hip_col = "hip" if "hip" in vis_df.columns else "id"
+    hips = vis_df[hip_col].values.astype(int)
+    mags = vis_df["mag"].values
+
+    has_ci = "ci" in vis_df.columns
+    cis = vis_df["ci"].values if has_ci else None
+
+    # Vectorised magnitude → radius
+    mag_clamped = np.clip(mags, -1.5, 6.5)
+    radii = 1.0 + ((6.5 - mag_clamped) / 8.0) * 5.0
+
+    result = []
+    for i in range(len(vis_idx)):
+        name = names[i]
+        name_str = None
+        if name is not None and not (isinstance(name, float) and math.isnan(name)):
+            s = str(name)
+            if s and s != "nan":
+                name_str = s
+
+        ci_val = float(cis[i]) if has_ci else float("nan")
+        color = _ci_to_hex_color(ci_val)
+
+        result.append({
+            "x": float(vis_x[i]),
+            "y": float(vis_y[i]),
+            "name": name_str,
+            "hip": int(hips[i]),
+            "radius": float(radii[i]),
+            "color": color,
+        })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Catalog helpers (static data served once to the frontend)
+# ---------------------------------------------------------------------------
+
+def star_names(star_df):
+    """Return [{name, hip}, ...] for every star that has a proper name."""
+    hip_col = "hip" if "hip" in star_df.columns else "id"
+    mask = star_df["proper"].notna() & (star_df["proper"] != "")
+    named = star_df.loc[mask, [hip_col, "proper"]]
     return [
-        {
-            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
-            "x":             float(visible_proj[i, 0]),
-            "y":             float(visible_proj[i, 1]),
-            "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
-            "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
-            # TODO: constellation to be implemented later
-        }
-        for i in range(len(visible_proj))
+        {"name": row["proper"], "hip": int(row[hip_col])}
+        for _, row in named.iterrows()
     ]
+
+
+def constellation_names(constellations_df):
+    """Return [{constellation_id, name, first_hip}, ...] for the sidebar."""
+    result = []
+    for _, row in constellations_df.iterrows():
+        hip_ids = row["hip_ids"]
+        first_hip = hip_ids[0] if isinstance(hip_ids, list) and hip_ids else None
+        result.append({
+            "constellation_id": row["constellation_id"],
+            "name": row["constellation_name"],
+            "first_hip": first_hip,
+        })
+    return result
+
+
+def get_all_constellations(constellations_df):
+    """Return full constellation line data for StarMap rendering."""
+    result = []
+    for _, row in constellations_df.iterrows():
+        hip_ids = row["hip_ids"]
+        result.append({
+            "constellation_id": row["constellation_id"],
+            "name": row["constellation_name"],
+            "hip_ids": hip_ids if isinstance(hip_ids, list) else [],
+        })
+    return result
+
+
+def get_visible_constellations(constellations_df, visible_hips):
+    """Return only constellations with at least one visible star."""
+    all_cons = get_all_constellations(constellations_df)
+    hip_set = set(visible_hips)
+    return [c for c in all_cons if any(h in hip_set for h in c["hip_ids"])]

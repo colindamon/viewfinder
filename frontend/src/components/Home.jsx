@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { io } from 'socket.io-client'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
 import { API_BASE } from '../config.js'
 
-const STARS_API = `${API_BASE}/stars`
 const STAR_NAMES_API = `${API_BASE}/star_names`
 const CONSTELLATIONS_NAMES_API = `${API_BASE}/constellation_names`
 const CONSTELLATION_LINES_API = `${API_BASE}/constellations`
@@ -13,27 +13,36 @@ const Home = () => {
     const [started, setStarted] = useState(false)
     const [stars, setStars] = useState([])
     const [selectedStars, setSelectedStars] = useState([])
-    const [starNames, setStarNames] = useState([])       // { name, hip }[] for Sidebar
-    const [constellationsNames, setConstellationsNames] = useState([]) // { constellation_id, name, first_hip }[] for Sidebar
-    const [constellationLines, setConstellationLines] = useState([])   // { constellation_id, name, hip_ids }[] for StarMap
+    const [starNames, setStarNames] = useState([])
+    const [constellationsNames, setConstellationsNames] = useState([])
+    const [constellationLines, setConstellationLines] = useState([])
+    const socketRef = useRef(null)
 
+    // Socket.IO: receive live star + pointing data pushed from backend
     useEffect(() => {
-        async function fetchStars() {
-            try {
-                const res = await fetch(STARS_API)
-                const data = await res.json()
-                const list = Array.isArray(data) ? data : tmp_star_data
-                setStars(list.map((s) => normalizeStar(s)))
-            } catch (e) {
-                setStars(tmp_star_data)
-                console.error('Failed to fetch stars:', e)
-            }
+        const socket = io(API_BASE, {
+            transports: ['websocket', 'polling'],
+            reconnectionDelay: 500,
+            reconnectionDelayMax: 2000,
+        })
+        socketRef.current = socket
+
+        socket.on('frontend_stars', (data) => {
+            const list = Array.isArray(data) ? data : []
+            setStars(list.map((s) => normalizeStar(s)))
+        })
+
+        socket.on('connect', () => {
+            console.log('Socket.IO connected')
+        })
+
+        return () => {
+            socket.disconnect()
+            socketRef.current = null
         }
-        fetchStars()
-        const interval = setInterval(fetchStars, 100)
-        return () => clearInterval(interval)
     }, [])
 
+    // Fetch static catalog data once on mount (these never change)
     useEffect(() => {
         async function fetchCatalog() {
             try {
@@ -54,8 +63,6 @@ const Home = () => {
             }
         }
         fetchCatalog()
-        const interval = setInterval(fetchCatalog, 500)
-        return () => clearInterval(interval)
     }, [])
 
   return (
