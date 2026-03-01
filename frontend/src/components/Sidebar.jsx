@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { MOCK_STARS, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
+import { API_BASE } from '../config.js'
 import bluestar1 from '../assets/bluestar1.png'
 import bluestar2 from '../assets/bluestar2.png'
+
+const FIND_STAR_API = `${API_BASE}/find_star`
+const CANCEL_FIND_STAR_API = `${API_BASE}/cancel_find_star`
 
 export default function Sidebar({
   selectedStars = [],
@@ -16,6 +20,7 @@ export default function Sidebar({
   const [filter, setFilter] = useState('all') // 'all' | 'stars' | 'constellations'
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
+  const prevActiveStarIdRef = useRef(null)
   const [activeStarId, setActiveStarId] = useState(null)
 
   const toggleStar = (hip) => {
@@ -57,6 +62,23 @@ export default function Sidebar({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [filterOpen])
+
+  useEffect(() => {
+    if (activeStarId != null) {
+      fetch(FIND_STAR_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hip: activeStarId }),
+      }).catch((e) => console.error('Failed to POST find_star:', e))
+    } else if (prevActiveStarIdRef.current != null) {
+      fetch(CANCEL_FIND_STAR_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch((e) => console.error('Failed to POST cancel_find_star:', e))
+    }
+    prevActiveStarIdRef.current = activeStarId
+  }, [activeStarId])
 
   return (
     <>

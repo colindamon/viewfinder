@@ -93,7 +93,7 @@ export default function StarMap({
     };
   }, [stars, dimensions]);
 
-  // Draw stars
+  // Redraw whenever stars, dimensions, selection, constellation lines, or hover change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !Array.isArray(stars) || stars.length === 0) return;
@@ -109,7 +109,7 @@ export default function StarMap({
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, W, H);
 
-    // Constellation lines (draw before stars so stars sit on top) — show all in constellation lines data
+    // Constellation lines (draw before stars so stars sit on top); uses current constellations prop so updates are reflected
     const conList = Array.isArray(constellations) ? constellations : [];
     const hipToStar = new Map(stars.map((s) => [s.hip, s]));
     conList

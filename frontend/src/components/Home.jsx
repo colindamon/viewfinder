@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
+import { API_BASE } from '../config.js'
 
-const API_BASE = 'http://127.0.0.1:8521'
 const STARS_API = `${API_BASE}/stars`
 const STAR_NAMES_API = `${API_BASE}/star_names`
-const CONSTELLATIONS_NAMES_API = `${API_BASE}/constellations_names`
-const CONSTELLATION_LINES_API = `${API_BASE}/constellation`
+const CONSTELLATIONS_NAMES_API = `${API_BASE}/constellation_names`
+const CONSTELLATION_LINES_API = `${API_BASE}/constellations`
 
 const Home = () => {
     const [started, setStarted] = useState(false)
@@ -54,6 +54,8 @@ const Home = () => {
             }
         }
         fetchCatalog()
+        const interval = setInterval(fetchCatalog, 500)
+        return () => clearInterval(interval)
     }, [])
 
   return (

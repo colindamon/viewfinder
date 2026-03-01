@@ -3,8 +3,9 @@ import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import Home from './components/Home'
 import StarLoader from './components/StarLoader'
+import { API_BASE } from './config.js'
 
-const STARS_API = 'http://127.0.0.1:8521/stars'
+const STARS_API = `${API_BASE}/stars`
 
 function App() {
   const [count, setCount] = useState(0)
