@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-csv_path = "python/assets/named_stars.csv"
+csv_path = "python/assets/stars.csv"
 
 def load_star_xyz() -> np.ndarray:
     """
@@ -23,7 +23,7 @@ def load_star_xyz() -> np.ndarray:
     return star_xyz
 
 
-def load_star_df(csv_path: str) -> pd.DataFrame:
+def load_star_df() -> pd.DataFrame:
     """
     Load star metadata from a CSV into a DataFrame for use with frontend_agent.py.
 

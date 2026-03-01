@@ -195,12 +195,66 @@ def get_frontend_stars(
 
     return [
         {
-            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
-            "x":             float(visible_proj[i, 0]),
-            "y":             float(visible_proj[i, 1]),
-            "radius":        _magnitude_to_radius(visible_meta.at[i, "mag"]),
-            "color":         _ci_to_hex_color(visible_meta.at[i, "ci"]),
-            # TODO: constellation to be implemented later
+            "name":   visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
+            "x":      float(visible_proj[i, 0]),
+            "y":      float(visible_proj[i, 1]),
+            "radius": _magnitude_to_radius(visible_meta.at[i, "mag"]),
+            "color":  _ci_to_hex_color(visible_meta.at[i, "ci"]),
+            "hip":    int(visible_meta.at[i, "hip"])
         }
         for i in range(len(visible_proj))
+    ]
+
+def get_visible_constellations(constellations, visible_stars: list) -> list:
+    visible_hips = {star["hip"] for star in visible_stars if star.get("hip") is not None}
+
+    return [
+        {
+            "constellation_id": row["constellation_id"],
+            "name":             row["constellation_name"],
+            "hip_ids":          row["hip_ids"],
+        }
+        for _, row in constellations.iterrows()
+        if visible_hips.intersection(row["hip_ids"])
+    ]
+
+def star_names(star_df) -> list:
+    """
+    Parameters
+    ----------
+    star_df : pd.DataFrame
+        Output of load_star_df(). Expected columns: "hip", "proper".
+
+    Returns
+    -------
+    list of dicts:
+        { "hip": int, "name": str or None }
+    """
+    return [
+        {
+            "hip":  int(row["hip"]),
+            "name": row["proper"],
+        }
+        for _, row in star_df.iterrows()
+    ]
+
+
+def constellation_names(constellations: np.ndarray) -> list:
+    """
+    Parameters
+    ----------
+    constellations : np.ndarray
+        Output of load_constellations(). Expected columns: "constellation_id", "constellation_name".
+
+    Returns
+    -------
+    list of dicts:
+        { "constellation_id": str, "name": str }
+    """
+    return [
+        {
+            "constellation_id": row["constellation_id"],
+            "name":             row["constellation_name"],
+        }
+        for _, row in constellations.iterrows()
     ]
