@@ -3,6 +3,8 @@ import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
 
+const STARS_API = "http://127.0.0.1:7000/stars";
+
 const Home = () => {
     const [started, setStarted] = useState(false)
     const [stars, setStars] = useState([])
