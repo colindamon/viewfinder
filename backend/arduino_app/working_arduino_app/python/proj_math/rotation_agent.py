@@ -166,7 +166,7 @@ def project_to_normalized_2d(
 def normalize_to_led_pixels(
     projected: np.ndarray,
     visible_mask: np.ndarray,
-    cols: int = 12,
+    cols: int = 13,
     rows: int = 8
 ) -> np.ndarray:
     """
@@ -279,7 +279,7 @@ def get_led_view(
     pitch_deg: float,
     roll_deg: float,
     fov_deg: float = 30.0,
-    cols: int = 12,
+    cols: int = 13,
     rows: int = 8
 ) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -411,7 +411,7 @@ def get_frontend_stars(
 def build_led_frame(
     pixels: np.ndarray,
     visible_mask: np.ndarray,
-    cols: int = 12,
+    cols: int = 13,
     rows: int = 8
 ) -> np.ndarray:
     """
@@ -445,77 +445,88 @@ def build_led_frame(
     return frame
 
 
+def _bresenham(r0, c0, r1, c1):
+    """Yield (row, col) pixels along a line."""
+    dr = abs(r1 - r0)
+    dc = abs(c1 - c0)
+    sr = 1 if r0 < r1 else -1
+    sc = 1 if c0 < c1 else -1
+    err = dc - dr
+    r, c = r0, c0
+    while True:
+        yield r, c
+        if r == r1 and c == c1:
+            break
+        e2 = 2 * err
+        if e2 > -dr:
+            err -= dr
+            c += sc
+        if e2 < dc:
+            err += dc
+            r += sr
+
+
 def build_direction_frame(
     direction: dict,
-    cols: int = 12,
+    cols: int = 13,
     rows: int = 8
 ) -> np.ndarray:
     """
-    Convert a get_direction_to_star() result into a boolean LED matrix frame
-    showing an arrow pointing toward the target star.
+    Render a linear arrow on the LED matrix pointing toward the target star.
 
-    Counterpart to build_led_frame() — where build_led_frame() renders the
-    star field, this renders the navigation arrow when find_star_mode is active.
-
-    If the star is in view, the four cardinal LEDs around the matrix center
-    light up as a found indicator. Otherwise, the full edge of the matrix
-    corresponding to the arrow direction is lit, pointing the user toward
-    the target.
+    Draws a 1px line from the center to the matrix edge, with a chevron (V)
+    at the tip. The arrow can point in any continuous direction.
 
     Parameters
     ----------
     direction : dict
-        Output of get_direction_to_star(). Expected keys:
-            "angle"   : float — direction in degrees, 0° = right, 90° = up
-            "in_view" : bool  — True if the star is within the current FOV
+        "angle"   : float — bearing in degrees, 0° = right, 90° = up
+        "in_view" : bool  — True if the star is within the current FOV
     cols : int
-        LED matrix columns (default 12).
+        LED matrix columns (default 13).
     rows : int
         LED matrix rows (default 8).
 
     Returns
     -------
     frame : np.ndarray, shape (rows, cols), dtype bool
-        True = LED on, False = LED off.
-        Index as frame[row][col].
     """
     frame = np.zeros((rows, cols), dtype=bool)
 
-    if direction["in_view"]:
-        # Star is visible — light four cardinal LEDs around center as found indicator
-        center_row = rows // 2
-        center_col = cols // 2
-        for row, col in [
-            (center_row,     center_col),
-            (center_row,     center_col - 1),
-            (center_row,     center_col + 1),
-            (center_row - 1, center_col),
-            (center_row + 1, center_col),
-        ]:
-            if 0 <= row < rows and 0 <= col < cols:
-                frame[row, col] = True
-        return frame
+    angle_rad = np.radians(direction["angle"])
+    dx = np.cos(angle_rad)
+    dy = -np.sin(angle_rad)
 
-    angle = direction["angle"]  # 0° = right, 90° = up, ±180° = left
+    cx = (cols - 1) / 2.0
+    cy = (rows - 1) / 2.0
 
-    if -45 <= angle < 45:
-        # Star is to the right — light right edge column
-        for row in range(rows):
-            frame[row, cols - 1] = True
+    # Ray-cast to the matrix edge
+    max_t = 1e9
+    if dx > 1e-9:
+        max_t = min(max_t, ((cols - 1) - cx) / dx)
+    elif dx < -1e-9:
+        max_t = min(max_t, -cx / dx)
+    if dy > 1e-9:
+        max_t = min(max_t, ((rows - 1) - cy) / dy)
+    elif dy < -1e-9:
+        max_t = min(max_t, -cy / dy)
 
-    elif 45 <= angle < 135:
-        # Star is above — light top edge row
-        for col in range(cols):
-            frame[0, col] = True
+    tip_c = int(np.clip(cx + dx * max_t, 0, cols - 1) + 0.5)
+    tip_r = int(np.clip(cy + dy * max_t, 0, rows - 1) + 0.5)
+    ctr_c = int(cx + 0.5)
+    ctr_r = int(cy + 0.5)
 
-    elif angle >= 135 or angle < -135:
-        # Star is to the left — light left edge column
-        for row in range(rows):
-            frame[row, 0] = True
+    # --- Shaft: line from center to tip ---
+    for r, c in _bresenham(ctr_r, ctr_c, tip_r, tip_c):
+        frame[r, c] = True
 
-    else:
-        # Star is below (-135 to -45) — light bottom edge row
-        for col in range(cols):
-            frame[rows - 1, col] = True
+    # --- Chevron: two lines from tip angled ±135° back from the arrow direction ---
+    head_len = 3.0
+    for sign in (-1, 1):
+        barb_angle = angle_rad + np.pi + sign * (np.pi / 4)
+        barb_c = int(np.clip(tip_c + np.cos(barb_angle) * head_len, 0, cols - 1) + 0.5)
+        barb_r = int(np.clip(tip_r - np.sin(barb_angle) * head_len, 0, rows - 1) + 0.5)
+        for r, c in _bresenham(tip_r, tip_c, barb_r, barb_c):
+            frame[r, c] = True
 
     return frame

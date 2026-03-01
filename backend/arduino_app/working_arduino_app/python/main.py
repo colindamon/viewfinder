@@ -214,7 +214,13 @@ def record_sensor_gyro(x: float, y: float, z: float):
             half_fov = np.tan(np.radians(LED_FOV / 2))
             in_view = cam[2] > 0 and abs(cam[0]/cam[2]) <= half_fov and abs(cam[1]/cam[2]) <= half_fov
             direction = {"angle": float(np.degrees(np.arctan2(cam[1], cam[0]))), "in_view": in_view}
-            send_led_frame(build_direction_frame(direction))
+
+            if in_view:
+                projected_led, mask_led = project_to_normalized_2d(camera_coords, LED_FOV)
+                pixels = normalize_to_led_pixels(projected_led, mask_led)
+                send_led_frame(build_led_frame(pixels, mask_led))
+            else:
+                send_led_frame(build_direction_frame(direction))
         else:
             projected_led, mask_led = project_to_normalized_2d(camera_coords, LED_FOV)
             pixels = normalize_to_led_pixels(projected_led, mask_led)
