@@ -1,2 +1,2 @@
 from .orientation import OrientationTracker
-from .frontend_agent import get_frontend_stars, constellation_names, star_names, get_visible_constellations
+from .frontend_agent import get_frontend_stars, constellation_names, star_names, get_all_constellations

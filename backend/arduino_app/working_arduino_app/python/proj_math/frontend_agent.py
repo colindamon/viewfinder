@@ -206,17 +206,18 @@ def get_frontend_stars(
         for i in range(len(visible_proj))
     ]
 
-def get_visible_constellations(constellations, visible_stars: list) -> list:
-    visible_hips = {star["hip"] for star in visible_stars if star.get("hip") is not None}
-
+def get_all_constellations(constellations) -> list:
+    """
+    Return full constellation data for the frontend (one-time fetch).
+    Frontend filters edges by visible star hip IDs locally.
+    """
     return [
         {
             "constellation_id": row["constellation_id"],
             "name":             row["constellation_name"],
-            "hip_ids":          row["hip_ids"],
+            "hip_ids":          list(row["hip_ids"]),
         }
         for _, row in constellations.iterrows()
-        if visible_hips.intersection(row["hip_ids"])
     ]
 
 def star_names(star_df: pd.DataFrame) -> list:

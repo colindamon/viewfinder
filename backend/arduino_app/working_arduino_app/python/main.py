@@ -11,7 +11,7 @@ import time
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
 from read_data import load_star_xyz, load_star_df, load_constellations
-from proj_math import get_frontend_stars, OrientationTracker, constellation_names, star_names, get_visible_constellations
+from proj_math import get_frontend_stars, OrientationTracker, constellation_names, star_names, get_all_constellations
 
 
 
@@ -36,7 +36,6 @@ CALIBRATION_DURATION = 1.5
 # Pointing state
 pointing_data = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "elevation": 0.0}
 frontend_stars = []
-visible_constellations = []
 
 detection_df = pd.DataFrame(
     {
@@ -82,8 +81,8 @@ def _get_pointing():
 def _get_frontend_stars():
     return frontend_stars
 
-def _get_visible_constellations():
-    return visible_constellations
+def _get_all_constellations():
+    return get_all_constellations(constellations)
 
 def _get_star_names():
     return star_names(star_df)
@@ -114,7 +113,7 @@ web_ui.expose_api("GET", "/gyro_samples", _get_gyro_samples)
 web_ui.expose_api("GET", "/orientation", _get_orientation)
 web_ui.expose_api("GET", "/pointing", _get_pointing)
 web_ui.expose_api("GET", "/stars", _get_frontend_stars)
-web_ui.expose_api("GET", "/constellations", _get_visible_constellations)
+web_ui.expose_api("GET", "/constellations", _get_all_constellations)
 web_ui.expose_api("GET", "/star_names", _get_star_names)
 web_ui.expose_api("GET", "/constellation_names", _get_constellations_names)
 web_ui.expose_api("POST", "/calibrate", start_calibration)
@@ -211,7 +210,6 @@ def record_sensor_gyro(x: float, y: float, z: float):
     # Call math function and stream result
     try:
         frontend_stars = get_frontend_stars(star_xyz, star_df, yaw, pitch, roll)
-        visible_constellations = get_visible_constellations(constellations, frontend_stars)
         logger.debug(frontend_stars)
     except Exception as e:
         logger.exception(f"math function error: {e}")

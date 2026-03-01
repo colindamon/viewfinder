@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
@@ -9,14 +9,32 @@ const STAR_NAMES_API = `${API_BASE}/star_names`
 const CONSTELLATIONS_NAMES_API = `${API_BASE}/constellation_names`
 const CONSTELLATION_LINES_API = `${API_BASE}/constellations`
 
+/** Filter constellation edges to only those where both endpoints are in visible stars (by hip). */
+function filterConstellationEdgesByVisible(allConstellations, stars) {
+  const visibleHips = new Set(stars.map((s) => s.hip).filter(Boolean))
+  return allConstellations
+    .map((c) => {
+      const hipIds = c.hip_ids || []
+      const filtered = []
+      for (let i = 0; i + 1 < hipIds.length; i += 2) {
+        if (visibleHips.has(hipIds[i]) && visibleHips.has(hipIds[i + 1])) {
+          filtered.push(hipIds[i], hipIds[i + 1])
+        }
+      }
+      return filtered.length ? { ...c, hip_ids: filtered } : null
+    })
+    .filter(Boolean)
+}
+
 const Home = () => {
     const [started, setStarted] = useState(false)
     const [stars, setStars] = useState([])
     const [selectedStars, setSelectedStars] = useState([])
     const [starNames, setStarNames] = useState([])       // { name, hip }[] for Sidebar
-    const [constellationsNames, setConstellationsNames] = useState([]) // { constellation_id, name, first_hip }[] for Sidebar
-    const [constellationLines, setConstellationLines] = useState([])   // { constellation_id, name, hip_ids }[] for StarMap
+    const [constellationsNames, setConstellationsNames] = useState([]) // { constellation_id, name }[] for Sidebar
+    const [allConstellations, setAllConstellations] = useState([])   // full edges, fetched once
 
+    // Poll visible stars from backend (gyro loop only serves this now)
     useEffect(() => {
         async function fetchStars() {
             try {
@@ -34,29 +52,47 @@ const Home = () => {
         return () => clearInterval(interval)
     }, [])
 
+    // Fetch full constellation data once on load; frontend filters edges by visible stars
+    useEffect(() => {
+        async function fetchConstellations() {
+            try {
+                const res = await fetch(CONSTELLATION_LINES_API)
+                const data = await res.json()
+                setAllConstellations(Array.isArray(data) ? data : CONSTELLATION_LINES)
+            } catch (e) {
+                console.error('Failed to fetch constellations:', e)
+                setAllConstellations(CONSTELLATION_LINES)
+            }
+        }
+        fetchConstellations()
+    }, [])
+
+    // Star names and constellation names for Sidebar (polled less often)
     useEffect(() => {
         async function fetchCatalog() {
             try {
-                const [namesRes, conNamesRes, conLinesRes] = await Promise.all([
+                const [namesRes, conNamesRes] = await Promise.all([
                     fetch(STAR_NAMES_API),
                     fetch(CONSTELLATIONS_NAMES_API),
-                    fetch(CONSTELLATION_LINES_API),
                 ])
                 const names = await namesRes.json()
                 const conNames = await conNamesRes.json()
-                const conLines = await conLinesRes.json()
                 setStarNames(Array.isArray(names) ? names : [])
                 setConstellationsNames(Array.isArray(conNames) ? conNames : [])
-                setConstellationLines(Array.isArray(conLines) ? conLines : CONSTELLATION_LINES)
             } catch (e) {
                 console.error('Failed to fetch catalog:', e)
-                setConstellationLines(CONSTELLATION_LINES)
             }
         }
         fetchCatalog()
         const interval = setInterval(fetchCatalog, 500)
         return () => clearInterval(interval)
     }, [])
+
+    // Filter constellation edges to only those visible in current star list (fast, in JS)
+    const constellationLines = useMemo(
+        () => filterConstellationEdgesByVisible(allConstellations, stars),
+        [allConstellations, stars]
+    )
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
