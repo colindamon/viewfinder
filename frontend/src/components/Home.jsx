@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
+import StarLoader from './StarLoader.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
 import { API_BASE } from '../config.js'
 
@@ -12,6 +13,8 @@ const CONSTELLATION_LINES_API = `${API_BASE}/constellations`
 
 const Home = () => {
     const [started, setStarted] = useState(false)
+    const [starsLoaded, setStarsLoaded] = useState(false)
+    const [catalogLoaded, setCatalogLoaded] = useState(false)
     const [stars, setStars] = useState(tmp_star_data)
     const [selectedStars, setSelectedStars] = useState([])
     const [starNames, setStarNames] = useState([])
@@ -19,6 +22,8 @@ const Home = () => {
     const [constellationLines, setConstellationLines] = useState(CONSTELLATION_LINES)
     const socketRef = useRef(null)
     const socketAliveRef = useRef(false)
+
+    const allLoaded = starsLoaded && catalogLoaded
 
     // Socket.IO: receive live star data pushed from backend (low latency path)
     useEffect(() => {
@@ -34,6 +39,7 @@ const Home = () => {
             const list = Array.isArray(data) ? data : []
             if (list.length > 0) {
                 setStars(list.map((s) => normalizeStar(s)))
+                setStarsLoaded(true)
             }
         })
 
@@ -59,6 +65,7 @@ const Home = () => {
                     const list = Array.isArray(data) ? data : []
                     if (active && !socketAliveRef.current && list.length > 0) {
                         setStars(list.map((s) => normalizeStar(s)))
+                        setStarsLoaded(true)
                     }
                 } catch {
                     // backend not ready yet, keep retrying
@@ -76,7 +83,7 @@ const Home = () => {
         let active = true
 
         async function fetchCatalog() {
-            for (let attempt = 0; attempt < 10 && active; attempt++) {
+            for (let attempt = 0; attempt < 30 && active; attempt++) {
                 try {
                     const [namesRes, conNamesRes, conLinesRes] = await Promise.all([
                         fetch(STAR_NAMES_API),
@@ -92,6 +99,7 @@ const Home = () => {
                         if (Array.isArray(conLines) && conLines.length > 0) {
                             setConstellationLines(conLines)
                         }
+                        setCatalogLoaded(true)
                     }
                     return
                 } catch {
@@ -124,12 +132,18 @@ const Home = () => {
       {!started && (
         <div
           className="absolute inset-0 z-1 flex cursor-pointer flex-col items-center justify-center text-center text-white"
-          onClick={() => setStarted(true)}
+          onClick={() => allLoaded && setStarted(true)}
           role="button"
           aria-label="Start"
         >
-          <h1 className="text-[11rem] tracking-widest font-tangerine font-bold">Viewfinder</h1>
-          <h2 className="text-5xl tracking-widest font-tangerine">Click anywhere to start</h2>
+          {!allLoaded ? (
+            <StarLoader message="Loading stars" />
+          ) : (
+            <>
+              <h1 className="text-[11rem] tracking-widest font-tangerine font-bold">Viewfinder</h1>
+              <h2 className="text-5xl tracking-widest font-tangerine">Click anywhere to start</h2>
+            </>
+          )}
         </div>
       )}
     </div>
