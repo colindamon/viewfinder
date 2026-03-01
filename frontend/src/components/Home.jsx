@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { io } from 'socket.io-client'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
@@ -9,90 +10,99 @@ const STAR_NAMES_API = `${API_BASE}/star_names`
 const CONSTELLATIONS_NAMES_API = `${API_BASE}/constellation_names`
 const CONSTELLATION_LINES_API = `${API_BASE}/constellations`
 
-/** Filter constellation edges to only those where both endpoints are in visible stars (by hip). */
-function filterConstellationEdgesByVisible(allConstellations, stars) {
-  const visibleHips = new Set(stars.map((s) => s.hip).filter(Boolean))
-  return allConstellations
-    .map((c) => {
-      const hipIds = c.hip_ids || []
-      const filtered = []
-      for (let i = 0; i + 1 < hipIds.length; i += 2) {
-        if (visibleHips.has(hipIds[i]) && visibleHips.has(hipIds[i + 1])) {
-          filtered.push(hipIds[i], hipIds[i + 1])
-        }
-      }
-      return filtered.length ? { ...c, hip_ids: filtered } : null
-    })
-    .filter(Boolean)
-}
-
 const Home = () => {
     const [started, setStarted] = useState(false)
-    const [stars, setStars] = useState([])
+    const [stars, setStars] = useState(tmp_star_data)
     const [selectedStars, setSelectedStars] = useState([])
-    const [starNames, setStarNames] = useState([])       // { name, hip }[] for Sidebar
-    const [constellationsNames, setConstellationsNames] = useState([]) // { constellation_id, name }[] for Sidebar
-    const [allConstellations, setAllConstellations] = useState([])   // full edges, fetched once
+    const [starNames, setStarNames] = useState([])
+    const [constellationsNames, setConstellationsNames] = useState([])
+    const [constellationLines, setConstellationLines] = useState(CONSTELLATION_LINES)
+    const socketRef = useRef(null)
+    const socketAliveRef = useRef(false)
 
-    // Poll visible stars from backend (gyro loop only serves this now)
+    // Socket.IO: receive live star data pushed from backend (low latency path)
     useEffect(() => {
-        async function fetchStars() {
-            try {
-                const res = await fetch(STARS_API)
-                const data = await res.json()
-                const list = Array.isArray(data) ? data : tmp_star_data
+        const socket = io(API_BASE, {
+            transports: ['websocket', 'polling'],
+            reconnectionDelay: 500,
+            reconnectionDelayMax: 2000,
+        })
+        socketRef.current = socket
+
+        socket.on('frontend_stars', (data) => {
+            socketAliveRef.current = true
+            const list = Array.isArray(data) ? data : []
+            if (list.length > 0) {
                 setStars(list.map((s) => normalizeStar(s)))
-            } catch (e) {
-                setStars(tmp_star_data)
-                console.error('Failed to fetch stars:', e)
             }
+        })
+
+        socket.on('connect', () => {
+            console.log('Socket.IO connected')
+        })
+
+        return () => {
+            socket.disconnect()
+            socketRef.current = null
         }
-        fetchStars()
-        const interval = setInterval(fetchStars, 100)
-        return () => clearInterval(interval)
     }, [])
 
-    // Fetch full constellation data once on load; frontend filters edges by visible stars
+    // Fallback: poll stars via HTTP until Socket.IO takes over
     useEffect(() => {
-        async function fetchConstellations() {
-            try {
-                const res = await fetch(CONSTELLATION_LINES_API)
-                const data = await res.json()
-                setAllConstellations(Array.isArray(data) ? data : CONSTELLATION_LINES)
-            } catch (e) {
-                console.error('Failed to fetch constellations:', e)
-                setAllConstellations(CONSTELLATION_LINES)
+        let active = true
+
+        async function poll() {
+            while (active && !socketAliveRef.current) {
+                try {
+                    const res = await fetch(STARS_API)
+                    const data = await res.json()
+                    const list = Array.isArray(data) ? data : []
+                    if (active && !socketAliveRef.current && list.length > 0) {
+                        setStars(list.map((s) => normalizeStar(s)))
+                    }
+                } catch {
+                    // backend not ready yet, keep retrying
+                }
+                await new Promise((r) => setTimeout(r, 200))
             }
         }
-        fetchConstellations()
+
+        poll()
+        return () => { active = false }
     }, [])
 
-    // Star names and constellation names for Sidebar (polled less often)
+    // Fetch static catalog data with retry (constellation lines, star names)
     useEffect(() => {
+        let active = true
+
         async function fetchCatalog() {
-            try {
-                const [namesRes, conNamesRes] = await Promise.all([
-                    fetch(STAR_NAMES_API),
-                    fetch(CONSTELLATIONS_NAMES_API),
-                ])
-                const names = await namesRes.json()
-                const conNames = await conNamesRes.json()
-                setStarNames(Array.isArray(names) ? names : [])
-                setConstellationsNames(Array.isArray(conNames) ? conNames : [])
-            } catch (e) {
-                console.error('Failed to fetch catalog:', e)
+            for (let attempt = 0; attempt < 10 && active; attempt++) {
+                try {
+                    const [namesRes, conNamesRes, conLinesRes] = await Promise.all([
+                        fetch(STAR_NAMES_API),
+                        fetch(CONSTELLATIONS_NAMES_API),
+                        fetch(CONSTELLATION_LINES_API),
+                    ])
+                    const names = await namesRes.json()
+                    const conNames = await conNamesRes.json()
+                    const conLines = await conLinesRes.json()
+                    if (active) {
+                        setStarNames(Array.isArray(names) ? names : [])
+                        setConstellationsNames(Array.isArray(conNames) ? conNames : [])
+                        if (Array.isArray(conLines) && conLines.length > 0) {
+                            setConstellationLines(conLines)
+                        }
+                    }
+                    return
+                } catch {
+                    await new Promise((r) => setTimeout(r, 1000))
+                }
             }
         }
-        fetchCatalog()
-        const interval = setInterval(fetchCatalog, 500)
-        return () => clearInterval(interval)
-    }, [])
 
-    // Filter constellation edges to only those visible in current star list (fast, in JS)
-    const constellationLines = useMemo(
-        () => filterConstellationEdgesByVisible(allConstellations, stars),
-        [allConstellations, stars]
-    )
+        fetchCatalog()
+        return () => { active = false }
+    }, [])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">

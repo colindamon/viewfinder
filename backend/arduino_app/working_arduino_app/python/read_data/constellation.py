@@ -1,11 +1,12 @@
 import pandas as pd
-import numpy as np
+import json
 from pathlib import Path
 import ast
 
-csv_path = "python/assets/constellations.csv"
+_DEFAULT_CSV = "python/assets/constellations.csv"
 
-def load_constellations() -> pd.DataFrame:
-    df = pd.read_csv(Path(csv_path), usecols=["constellation_id", "constellation_name", "hip_ids"])
-    df["hip_ids"] = df["hip_ids"].apply(ast.literal_eval)
+
+def load_constellations(csv_path=_DEFAULT_CSV) -> pd.DataFrame:
+    df = pd.read_csv(Path(csv_path))
+    df["hip_ids"] = df["hip_ids"].apply(json.loads)
     return df
