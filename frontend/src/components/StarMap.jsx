@@ -23,12 +23,12 @@ function drawRoundedStarPath(ctx, cx, cy, R) {
 
 /** Accepts only object shape { name?, hip?, x, y, radius?, color? }. Returns normalized { name, hip, x, y, radius, color }. */
 export function normalizeStar(s) {
-  if (!s || typeof s !== "object" || Array.isArray(s) || !("x" in s) || !("y" in s)) {
+  if (!s || typeof s !== "object") {
     return { name: "", hip: null, x: 0, y: 0, radius: 0.5, color: "#ffffff" };
   }
   const name = s.name ?? s.star_name ?? s.id ?? (typeof s.label === "string" ? s.label : "");
   const hip = s.hip != null ? s.hip : null;
-  return {name: String(name), hip, x: s.x, y: s.y, radius: s.radius ?? 0.5,color: s.color ?? s.hex ?? "#ffffff",};
+  return {name: String(name), hip:hip, x: s.x, y: s.y, radius: s.radius ?? 0.5,color: s.color ?? s.hex ?? "#ffffff",};
 }
 
 export default function StarMap({
