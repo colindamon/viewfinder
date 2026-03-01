@@ -14,6 +14,20 @@ const long interval = 50;
 
 int ledRows[8] = {0,0,0,0,0,0,0,0};
 
+// Mode
+#define MODE_STAR_VIEW 0
+#define MODE_FIND_STAR 1
+int currentMode = MODE_STAR_VIEW;
+
+// Find star state
+float findAngle = 0.0f;
+float findDistance = 180.0f;
+bool starInView = false;
+
+// Blink state
+unsigned long lastBlinkMillis = 0;
+bool blinkState = false;
+
 void clearMatrix() {
   matBuf[0] = matBuf[1] = matBuf[2] = matBuf[3] = 0;
 }
@@ -70,7 +84,25 @@ void set_led_bottom(int r4, int r5, int r6, int r7) {
   ledRows[5] = r5;
   ledRows[6] = r6;
   ledRows[7] = r7;
-  renderLedRows();
+  if (currentMode == MODE_STAR_VIEW) {
+    renderLedRows();
+  }
+}
+
+void set_find_star(float angle, float distance, float inView) {
+  currentMode = MODE_FIND_STAR;
+  findAngle = angle;
+  findDistance = distance;
+  starInView = (inView > 0.5f);
+}
+
+void cancel_find_star() {
+  currentMode = MODE_STAR_VIEW;
+  findAngle = 0.0f;
+  findDistance = 180.0f;
+  starInView = false;
+  clearMatrix();
+  matrixWrite(matBuf);
 }
 
 void setup() {
@@ -91,6 +123,8 @@ void setup() {
 
   Bridge.provide("set_led_top", set_led_top);
   Bridge.provide("set_led_bottom", set_led_bottom);
+  Bridge.provide("set_find_star", set_find_star);
+  Bridge.provide("cancel_find_star", cancel_find_star);
 
   lastTime = millis();
 }
@@ -115,6 +149,35 @@ void loop() {
       Bridge.notify("record_sensor_movement", nx, ny, nz);
       Bridge.notify("record_sensor_gyro", gx, gy, gz);
       Bridge.notify("record_elevation", elevation);
+    }
+
+    if (currentMode == MODE_FIND_STAR) {
+      if (starInView) {
+        unsigned long blinkInterval = 150;
+        if (currentMillis - lastBlinkMillis >= blinkInterval) {
+          lastBlinkMillis = currentMillis;
+          blinkState = !blinkState;
+          if (blinkState) {
+            matBuf[0] = matBuf[1] = matBuf[2] = 0xFFFFFFFF;
+            matBuf[3] = 0xFF;
+          } else {
+            clearMatrix();
+          }
+          matrixWrite(matBuf);
+        }
+      } else {
+        unsigned long blinkInterval = (unsigned long)(100 + (findDistance / 180.0f) * 900.0f);
+        if (currentMillis - lastBlinkMillis >= blinkInterval) {
+          lastBlinkMillis = currentMillis;
+          blinkState = !blinkState;
+          if (blinkState) {
+            drawArrow(findAngle);
+          } else {
+            clearMatrix();
+            matrixWrite(matBuf);
+          }
+        }
+      }
     }
   }
 
