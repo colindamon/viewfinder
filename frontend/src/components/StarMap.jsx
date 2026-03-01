@@ -161,9 +161,9 @@ export default function StarMap({
       const r = parseInt(hex.slice(0, 2), 16) || 255;
       const g = parseInt(hex.slice(2, 4), 16) || 255;
       const b = parseInt(hex.slice(4, 6), 16) || 255;
-      const glowRadius = radius * 3.5;
+      const glowRadius = radius * 1.5;
       const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
-      gradient.addColorStop(0, `rgba(${r},${g},${b},0.3)`);
+      gradient.addColorStop(0, `rgba(${r},${g},${b},0.25)`);
       gradient.addColorStop(0.5, `rgba(${r},${g},${b},0.1)`);
       gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
       ctx.beginPath();
@@ -172,7 +172,7 @@ export default function StarMap({
       ctx.fill();
       // Star core (rounded 5-point star)
       ctx.beginPath();
-      drawRoundedStarPath(ctx, x, y, radius*1.5);
+      drawRoundedStarPath(ctx, x, y, radius*0.5);
       ctx.fillStyle = fillColor;
       ctx.fill();
 
