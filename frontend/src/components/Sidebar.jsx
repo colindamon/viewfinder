@@ -1,21 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { tmp_star_data } from './StarMap.jsx'
-
-const MOCK_CONSTELLATIONS = [
-  'Orion',
-  'Ursa Major',
-  'Cassiopeia',
-  'Cygnus',
-  'Lyra',
-  'Scorpius',
-  'Leo',
-  'Aquila',
-  'Pegasus',
-  'Draco',
-]
+import { MOCK_STARS, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
 
 export default function Sidebar({
-  stars = [],
   selectedStars = [],
   setSelectedStars,
   selectedConstellations = [],
@@ -26,21 +12,21 @@ export default function Sidebar({
   const [filter, setFilter] = useState('all') // 'all' | 'stars' | 'constellations'
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
-  const [activeStarName, setActiveStarName] = useState(null)
+  const [activeStarId, setActiveStarId] = useState(null)
 
-  const toggleStar = (name) => {
+  const toggleStar = (hip) => {
     setSelectedStars?.((prev) =>
-      prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]
+      prev.includes(hip) ? prev.filter((id) => id !== hip) : [...prev, hip]
     )
   }
-  const toggleConstellation = (name) => {
+  const toggleConstellation = (constellation_id) => {
     setSelectedConstellations?.((prev) =>
-      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+      prev.includes(constellation_id) ? prev.filter((id) => id !== constellation_id) : [...prev, constellation_id]
     )
   }
 
-  const setActiveStar = (name) => {
-    setActiveStarName((prev) => (prev === name ? null : name))
+  const setActiveStar = (hip) => {
+    setActiveStarId((prev) => (prev === hip ? null : hip))
   }
 
   const ArrowIcon = ({ active }) => (
@@ -60,33 +46,17 @@ export default function Sidebar({
     </svg>
   )
 
-  const starNames = Array.isArray(stars) && stars.length > 0
-    ? stars.map((s) => s.name).filter(Boolean)
-    : tmp_star_data.map((s) => s.name)
-  const filteredStars = starNames.filter((name) =>
-    name.toLowerCase().includes(search.toLowerCase())
+  const filteredStars = MOCK_STARS.filter((star) =>
+    star.name.toLowerCase().includes(search.toLowerCase())
   )
-  const filteredConstellations = MOCK_CONSTELLATIONS.filter((name) =>
-    name.toLowerCase().includes(search.toLowerCase())
+  const filteredConstellations = MOCK_CONSTELLATIONS.filter((con) =>
+    con.name.toLowerCase().includes(search.toLowerCase())
   )
 
   const showStars = filter === 'all' || filter === 'stars'
   const showConstellations = filter === 'all' || filter === 'constellations'
 
   const filterLabels = { all: 'All', stars: 'Stars', constellations: 'Constellations' }
-
-  useEffect(() => {
-    if (!Array.isArray(stars) || stars.length === 0) return
-    const largeStarNames = stars
-      .filter((s) => (s.radius ?? 0) > 0.90 && s.name)
-      .map((s) => s.name)
-    if (largeStarNames.length === 0) return
-    setSelectedStars?.((prev) => {
-      const current = Array.isArray(prev) ? prev : []
-      const next = [...new Set([...current, ...largeStarNames])]
-      return next.length === current.length ? current : next
-    })
-  }, [stars, setSelectedStars])
 
   useEffect(() => {
     if (!filterOpen) return
@@ -253,34 +223,30 @@ export default function Sidebar({
                 </span>
               </div>
               <ul className="mb-6 flex flex-col gap-2">
-                {filteredStars.map((name) => (
-                  <li key={name} className="flex items-center gap-2">
+                {filteredStars.map((star) => (
+                  <li key={star.hip} className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        toggleStar(name)
-                      }}
+                      onClick={() => toggleStar(star.hip)}
                       className={`min-w-0 flex-1 rounded-md border px-3 py-2.5 text-left text-sm transition-colors ${
-                        selectedStars.includes(name)
+                        selectedStars.includes(star.hip)
                           ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
                           : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
                       }`}
                     >
-                      <span className="block truncate">{name}</span>
+                      <span className="block truncate">{star.name}</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveStar(name)
-                      }}
+                      onClick={() => setActiveStar(star.hip)}
                       className={`flex h-9 w-9 mx-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
-                        activeStarName === name
+                        activeStarId === star.hip
                           ? 'border-blue-500 bg-[#1a365d] text-blue-50'
                           : 'border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400'
                       }`}
-                      aria-label={activeStarName === name ? 'Deselect star' : 'Select star'}
+                      aria-label={activeStarId === star.hip ? 'Deselect star' : 'Select star'}
                     >
-                      <ArrowIcon active={activeStarName === name}/>
+                      <ArrowIcon active={activeStarId === star.hip} />
                     </button>
                   </li>
                 ))}
@@ -294,13 +260,13 @@ export default function Sidebar({
                 Constellations
               </p>
               <ul className="flex flex-col gap-2">
-                {filteredConstellations.map((name) => (
-                  <li key={name}>
+                {filteredConstellations.map((con) => (
+                  <li key={con.constellation_id}>
                     <button
                       type="button"
-                      onClick={() => toggleConstellation(name)}
+                      onClick={() => toggleConstellation(con.constellation_id)}
                       className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                        selectedConstellations.includes(name)
+                        selectedConstellations.includes(con.constellation_id)
                           ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
                           : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
                       }`}
@@ -308,7 +274,7 @@ export default function Sidebar({
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
                         Image
                       </span>
-                      <span className="min-w-0 flex-1">{name}</span>
+                      <span className="min-w-0 flex-1">{con.name}</span>
                     </button>
                   </li>
                 ))}
@@ -338,16 +304,19 @@ export default function Sidebar({
                   Stars
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedStars.map((name) => (
-                    <button
-                      key={`star-${name}`}
-                      type="button"
-                      onClick={() => toggleStar(name)}
-                      className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
-                    >
-                      {name} ×
-                    </button>
-                  ))}
+                  {selectedStars.map((hip) => {
+                    const star = MOCK_STARS.find((s) => s.hip === hip)
+                    return star ? (
+                      <button
+                        key={`star-${hip}`}
+                        type="button"
+                        onClick={() => toggleStar(hip)}
+                        className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                      >
+                        {star.name} ×
+                      </button>
+                    ) : null
+                  })}
                 </div>
               </div>
             )}
@@ -357,16 +326,19 @@ export default function Sidebar({
                   Constellations
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedConstellations.map((name) => (
-                    <button
-                      key={`const-${name}`}
-                      type="button"
-                      onClick={() => toggleConstellation(name)}
-                      className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
-                    >
-                      {name} ×
-                    </button>
-                  ))}
+                  {selectedConstellations.map((constellation_id) => {
+                    const con = MOCK_CONSTELLATIONS.find((c) => c.constellation_id === constellation_id)
+                    return con ? (
+                      <button
+                        key={`const-${constellation_id}`}
+                        type="button"
+                        onClick={() => toggleConstellation(constellation_id)}
+                        className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                      >
+                        {con.name} ×
+                      </button>
+                    ) : null
+                  })}
                 </div>
               </div>
             )}

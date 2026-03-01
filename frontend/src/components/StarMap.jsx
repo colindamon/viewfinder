@@ -1,51 +1,30 @@
 import { useState, useEffect, useRef } from "react";
+import { tmp_star_data } from '../data/catalogMock.js'
 
-// Array of { name, x, y, radius (0–1), color } — exported for use as fallback
-export const tmp_star_data = [
-  { name: "Sirius", x: -0.406, y: 0.345, radius: 0.9, color: "#ffffff" },
-  { name: "Canopus", x: -0.591, y: -0.717, radius: 0.85, color: "#f0f4ff" },
-  { name: "Arcturus", x: -0.972, y: 0.042, radius: 0.7, color: "#fff4e6" },
-  { name: "Vega", x: 0.893, y: -0.616, radius: 0.8, color: "#e8f4ff" },
-  { name: "Capella", x: 0.460, y: 0.564, radius: 0.75, color: "#fff8dc" },
-  { name: "Rigel", x: 0.707, y: 0.420, radius: 0.95, color: "#FF69B4" },
-  { name: "Procyon", x: -0.318, y: -0.207, radius: 0.65, color: "#f5f5ff" },
-  { name: "Betelgeuse", x: -0.153, y: 0.182, radius: 0.88, color: "#ffddd0" },
-  { name: "Altair", x: 0.542, y: 0.546, radius: 0.7, color: "#faf0e6" },
-  { name: "Aldebaran", x: 0.809, y: -0.190, radius: 0.78, color: "#ffebcd" },
-  { name: "Spica", x: -0.223, y: -0.427, radius: 0.6, color: "#e0f0ff" },
-  { name: "Antares", x: 0.967, y: 0.834, radius: 0.82, color: "#ffddd0" },
-  { name: "Pollux", x: -0.436, y: 0.364, radius: 0.68, color: "#fff0e6" },
-  { name: "Fomalhaut", x: -0.436, y: 0.364, radius: 0.55, color: "#f0f8ff" },
-  { name: "Deneb", x: 0.895, y: -0.165, radius: 0.92, color: "#e6f0ff" },
-  { name: "Regulus", x: 0.014, y: -0.878, radius: 0.72, color: "#fff5ee" },
-  { name: "Castor", x: -0.386, y: -0.179, radius: 0.58, color: "#f8f8ff" },
-  { name: "Bellatrix", x: 0.554, y: 0.024, radius: 0.62, color: "#e8eeff" },
-  { name: "Algol", x: 0.075, y: 0.785, radius: 0.5, color: "#f5f5f5" },
-  { name: "Mira", x: -0.680, y: -0.535, radius: 0.45, color: "#ffd4c4" },
-  { name: "Polaris", x: -0.259, y: 0.941, radius: 0.74, color: "#f0f4ff" },
-  { name: "Alcyone", x: -0.495, y: 0.233, radius: 0.52, color: "#e6eeff" },
-  { name: "", x: 0, y: 0, radius: 0.99, color: "#e6eeff" },
-];
 
+/** Accepts only object shape { name?, hip?, x, y, radius?, color? }. Returns normalized { name, hip, x, y, radius, color }. */
 export function normalizeStar(s) {
-  if (s && typeof s === "object" && !Array.isArray(s) && "x" in s && "y" in s) {
-    const name = s.name ?? s.star_name ?? s.id ?? (typeof s.label === "string" ? s.label : "");
-    return { name: String(name), x: s.x, y: s.y, radius: s.radius ?? 0.5, color: s.color ?? s.hex ?? "#ffffff" };
+  if (!s || typeof s !== "object" || Array.isArray(s) || !("x" in s) || !("y" in s)) {
+    return { name: "", hip: null, x: 0, y: 0, radius: 0.5, color: "#ffffff" };
   }
-  if (Array.isArray(s)) {
-    if (s.length >= 5) return { name: s[0], x: s[1], y: s[2], radius: s[3], color: s[4] };
-    if (s.length >= 2) return { name: "", x: s[0], y: s[1], radius: 0.5, color: "#ffffff" };
-  }
-  return { name: "", x: 0, y: 0, radius: 0.5, color: "#ffffff" };
+  const name = s.name ?? s.star_name ?? s.id ?? (typeof s.label === "string" ? s.label : "");
+  const hip = s.hip != null ? s.hip : null;
+  return {name: String(name), hip, x: s.x, y: s.y, radius: s.radius ?? 0.5,color: s.color ?? s.hex ?? "#ffffff",};
 }
 
 const STARS_API = "http://127.0.0.1:8521/stars";
 
-export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
+export default function StarMap({
+  selectedStarIds = [],
+  stars: starsProp,
+  constellations = [],
+  selectedConstellationIds = [],
+}) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [localStars, setLocalStars] = useState([]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [hoveredStar, setHoveredStar] = useState(null);
 
   const stars = starsProp !== undefined && Array.isArray(starsProp) ? starsProp : localStars;
 
@@ -80,6 +59,43 @@ export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
     return () => clearInterval(interval);
   }, [starsProp]);
 
+  // Hit-test mouse and set hovered star
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !Array.isArray(stars) || stars.length === 0) return;
+    const W = dimensions.width;
+    const H = dimensions.height;
+    const hitPadding = 12;
+
+    const handleMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      let found = null;
+      let minDist = Infinity;
+      for (const star of stars) {
+        const x = ((star.x + 1) / 2) * W;
+        const y = ((1 - star.y) / 2) * H;
+        const radius = (star.radius ?? 0.5) * 4 + hitPadding;
+        const dx = mx - x;
+        const dy = my - y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d <= radius && d < minDist) {
+          minDist = d;
+          found = star;
+        }
+      }
+      setHoveredStar((prev) => (found === prev ? prev : found));
+    };
+    const handleLeave = () => setHoveredStar(null);
+    canvas.addEventListener("mousemove", handleMove);
+    canvas.addEventListener("mouseleave", handleLeave);
+    return () => {
+      canvas.removeEventListener("mousemove", handleMove);
+      canvas.removeEventListener("mouseleave", handleLeave);
+    };
+  }, [stars, dimensions]);
+
   // Draw stars
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -96,7 +112,33 @@ export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, W, H);
 
-    const showLabels = Array.isArray(selectedStarNames) && selectedStarNames.length > 0;
+    // Constellation lines (draw before stars so stars sit on top)
+    const selectedConIds = Array.isArray(selectedConstellationIds) ? selectedConstellationIds : [];
+    const conList = Array.isArray(constellations) ? constellations : [];
+    const hipToStar = new Map(stars.map((s) => [s.hip, s]));
+    conList
+      .filter((c) => c && c.hip_ids && selectedConIds.includes(c.constellation_id))
+      .forEach((con) => {
+        const ids = con.hip_ids;
+        for (let i = 0; i + 1 < ids.length; i += 2) {
+          const a = hipToStar.get(ids[i]);
+          const b = hipToStar.get(ids[i + 1]);
+          if (a && b) {
+            const x1 = ((a.x + 1) / 2) * W;
+            const y1 = ((1 - a.y) / 2) * H;
+            const x2 = ((b.x + 1) / 2) * W;
+            const y2 = ((1 - b.y) / 2) * H;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = "rgba(150, 180, 255, 0.7)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+        }
+      });
+
+    const selectedIds = Array.isArray(selectedStarIds) ? selectedStarIds : [];
     stars.forEach((star) => {
       const rawX = star.x ?? 0;
       const rawY = star.y ?? 0;
@@ -113,9 +155,11 @@ export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-      
-      //adjust radius to whatever
-      if (showLabels && star.name && selectedStarNames.includes(star.name)) {
+
+      const starId = star.hip != null ? star.hip : null;
+      const isSelected = star.name && starId != null && selectedIds.includes(starId);
+      const isHovered = hoveredStar && star.name && (hoveredStar.name === star.name || (hoveredStar.hip != null && hoveredStar.hip === starId));
+      if (star.name && (isSelected || isHovered)) {
         ctx.font = "14px 'Sour Gummy', cursive";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
@@ -123,7 +167,27 @@ export default function StarMap({ selectedStarNames = [], stars: starsProp }) {
         ctx.fillText(star.name, x, y + radius + 4);
       }
     });
-  }, [stars, dimensions, selectedStarNames]);
+
+    // Constellation name under the first star of each selected constellation
+    conList
+      .filter((c) => c && c.hip_ids && c.name && selectedConIds.includes(c.constellation_id))
+      .forEach((con) => {
+        const firstHip = con.hip_ids[0];
+        const firstStar = firstHip != null ? hipToStar.get(firstHip) : null;
+        if (!firstStar) return;
+        const rawX = firstStar.x ?? 0;
+        const rawY = firstStar.y ?? 0;
+        const radiusNorm = firstStar.radius ?? 0.5;
+        const x = ((rawX + 1) / 2) * W;
+        const y = ((1 - rawY) / 2) * H;
+        const radius = radiusNorm * 4;
+        ctx.font = "12px 'Sour Gummy', cursive";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "rgba(150, 180, 255, 0.9)";
+        ctx.fillText(con.name, x, y + radius + 18);
+      });
+  }, [stars, dimensions, selectedStarIds, selectedConstellationIds, constellations, hoveredStar]);
 
   return (
     <div

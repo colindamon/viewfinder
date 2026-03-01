@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import StarMap, { tmp_star_data, normalizeStar } from './StarMap.jsx'
+import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
+import {tmp_star_data, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
 
 const STARS_API = 'http://127.0.0.1:8521/stars'
 
@@ -30,11 +31,15 @@ const Home = () => {
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
       <div className="absolute inset-0 z-0">
-        <StarMap selectedStarNames={selectedStars} stars={stars} />
+        <StarMap
+          selectedStarIds={selectedStars}
+          stars={stars}
+          constellations={MOCK_CONSTELLATIONS}
+          selectedConstellationIds={selectedConstellations}
+        />
       </div>
       {started && (
         <Sidebar
-          stars={stars}
           selectedStars={selectedStars}
           setSelectedStars={setSelectedStars}
           selectedConstellations={selectedConstellations}
