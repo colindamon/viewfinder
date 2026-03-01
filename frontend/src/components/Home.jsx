@@ -1,16 +1,49 @@
-import React, { useState } from 'react'
-import StarMap from './StarMap.jsx'
+import React, { useState, useEffect } from 'react'
+import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
+import {tmp_star_data, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
 
 const Home = () => {
-  const [started, setStarted] = useState(false)
+    const [started, setStarted] = useState(false)
+    const [stars, setStars] = useState([])
+    const [selectedStars, setSelectedStars] = useState([])
+    const [selectedConstellations, setSelectedConstellations] = useState([])
+
+    useEffect(() => {
+        async function fetchStars() {
+        try {
+            const res = await fetch(STARS_API)
+            const data = await res.json()
+            const list = Array.isArray(data) ? data : tmp_star_data
+            setStars(list.map((s) => normalizeStar(s)))
+        } catch (e) {
+            setStars(tmp_star_data)
+            console.error('Failed to fetch stars:', e)
+        }
+        }
+        fetchStars()
+        const interval = setInterval(fetchStars, 100)
+        return () => clearInterval(interval)
+    }, [])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
       <div className="absolute inset-0 z-0">
-        <StarMap />
+        <StarMap
+          selectedStarIds={selectedStars}
+          stars={stars}
+          constellations={MOCK_CONSTELLATIONS}
+          selectedConstellationIds={selectedConstellations}
+        />
       </div>
-      {started && <Sidebar />}
+      {started && (
+        <Sidebar
+          selectedStars={selectedStars}
+          setSelectedStars={setSelectedStars}
+          selectedConstellations={selectedConstellations}
+          setSelectedConstellations={setSelectedConstellations}
+        />
+      )}
       {!started && (
         <div
           className="absolute inset-0 z-1 flex cursor-pointer flex-col items-center justify-center text-center text-white"
