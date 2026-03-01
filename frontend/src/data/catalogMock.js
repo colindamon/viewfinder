@@ -24,9 +24,21 @@ export const MOCK_STARS = [
   { name: "Alcyone", hip: 17702 },
 ];
 
-/** Mock constellation catalog with line data: { constellation_id, name, num_stars, hip_ids }.
- *  hip_ids are consecutive pairs (hip1, hip2) for each line segment; all hips must exist in star data. */
+/** Mock constellation catalog for Sidebar: { constellation_id, name } only. */
 export const MOCK_CONSTELLATIONS = [
+  { constellation_id: "Ori", name: "Orion" },
+  { constellation_id: "UMa", name: "Ursa Major" },
+  { constellation_id: "Cas", name: "Cassiopeia" },
+  { constellation_id: "Cyg", name: "Cygnus" },
+  { constellation_id: "Lyr", name: "Lyra" },
+  { constellation_id: "Sco", name: "Scorpius" },
+  { constellation_id: "Leo", name: "Leo" },
+  { constellation_id: "Aql", name: "Aquila" },
+];
+
+/** Constellation line data for StarMap: { constellation_id, name, hip_ids }.
+ *  hip_ids are consecutive pairs (hip1, hip2) per segment; StarMap uses this to draw lines. */
+export const CONSTELLATION_LINES = [
   {
     constellation_id: "Aql",
     name: "Aquila",

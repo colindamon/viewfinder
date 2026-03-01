@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { tmp_star_data } from '../data/catalogMock.js'
-
 
 /** Accepts only object shape { name?, hip?, x, y, radius?, color? }. Returns normalized { name, hip, x, y, radius, color }. */
 export function normalizeStar(s) {
@@ -44,7 +42,7 @@ export default function StarMap({
   useEffect(() => {
     async function fetchStars() {
       try {
-        const res = await fetch("http://127.0.0.1:8521/stars");
+        const res = await fetch(STARS_API);
         const data = await res.json();
         setStars(Array.isArray(data) ? data : []);
       } catch (e) {
