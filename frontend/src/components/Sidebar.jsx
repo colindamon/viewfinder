@@ -1,56 +1,56 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { MOCK_STARS, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
 
-const MOCK_STARS = [
-  'Sirius',
-  'Canopus',
-  'Arcturus',
-  'Vega',
-  'Capella',
-  'Rigel',
-  'Procyon',
-  'Betelgeuse',
-  'Altair',
-  'Aldebaran',
-]
-
-const MOCK_CONSTELLATIONS = [
-  'Orion',
-  'Ursa Major',
-  'Cassiopeia',
-  'Cygnus',
-  'Lyra',
-  'Scorpius',
-  'Leo',
-  'Aquila',
-  'Pegasus',
-  'Draco',
-]
-
-export default function Sidebar() {
+export default function Sidebar({
+  selectedStars = [],
+  setSelectedStars,
+  selectedConstellations = [],
+  setSelectedConstellations,
+}) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all') // 'all' | 'stars' | 'constellations'
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
-  const [selectedStars, setSelectedStars] = useState([])
-  const [selectedConstellations, setSelectedConstellations] = useState([])
+  const [activeStarId, setActiveStarId] = useState(null)
 
-  const toggleStar = (name) => {
-    setSelectedStars((prev) =>
-      prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]
+  const toggleStar = (hip) => {
+    setSelectedStars?.((prev) =>
+      prev.includes(hip) ? prev.filter((id) => id !== hip) : [...prev, hip]
     )
   }
-  const toggleConstellation = (name) => {
-    setSelectedConstellations((prev) =>
-      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+  const toggleConstellation = (constellation_id) => {
+    setSelectedConstellations?.((prev) =>
+      prev.includes(constellation_id) ? prev.filter((id) => id !== constellation_id) : [...prev, constellation_id]
     )
   }
 
-  const filteredStars = MOCK_STARS.filter((name) =>
-    name.toLowerCase().includes(search.toLowerCase())
+  const setActiveStar = (hip) => {
+    setActiveStarId((prev) => (prev === hip ? null : hip))
+  }
+
+  const ArrowIcon = ({ active }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="20"
+      height="12"
+      viewBox="0 0 20 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 ${active ? 'text-blue-400' : 'text-blue-300/50'}`}
+    >
+      <path d="M2 6h14M12 2l6 4-6 4" />
+    </svg>
   )
-  const filteredConstellations = MOCK_CONSTELLATIONS.filter((name) =>
-    name.toLowerCase().includes(search.toLowerCase())
+
+  const filteredStars = MOCK_STARS.filter((star) =>
+    star.name.toLowerCase().includes(search.toLowerCase())
+  )
+  const filteredConstellations = MOCK_CONSTELLATIONS.filter((con) =>
+    con.name.toLowerCase().includes(search.toLowerCase())
   )
 
   const showStars = filter === 'all' || filter === 'stars'
@@ -214,22 +214,39 @@ export default function Sidebar() {
         <div className="scrollbar-hide flex-1 overflow-y-auto p-3">
           {showStars && (
             <>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-blue-300/70">
-                Stars
-              </p>
-              <ul className="mb-6 grid grid-cols-2 gap-2">
-                {filteredStars.map((name) => (
-                  <li key={name}>
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold tracking-wider text-blue-300/70">
+                  Stars
+                </p>
+                <span className="font-semibold shrink-0 text-right text-xs leading-tight text-blue-400/90">
+                  Point to star
+                </span>
+              </div>
+              <ul className="mb-6 flex flex-col gap-2">
+                {filteredStars.map((star) => (
+                  <li key={star.hip} className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => toggleStar(name)}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                        selectedStars.includes(name)
+                      onClick={() => toggleStar(star.hip)}
+                      className={`min-w-0 flex-1 rounded-md border px-3 py-2.5 text-left text-sm transition-colors ${
+                        selectedStars.includes(star.hip)
                           ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
                           : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
                       }`}
                     >
-                      {name}
+                      <span className="block truncate">{star.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveStar(star.hip)}
+                      className={`flex h-9 w-9 mx-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                        activeStarId === star.hip
+                          ? 'border-blue-500 bg-[#1a365d] text-blue-50'
+                          : 'border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400'
+                      }`}
+                      aria-label={activeStarId === star.hip ? 'Deselect star' : 'Select star'}
+                    >
+                      <ArrowIcon active={activeStarId === star.hip} />
                     </button>
                   </li>
                 ))}
@@ -243,13 +260,13 @@ export default function Sidebar() {
                 Constellations
               </p>
               <ul className="flex flex-col gap-2">
-                {filteredConstellations.map((name) => (
-                  <li key={name}>
+                {filteredConstellations.map((con) => (
+                  <li key={con.constellation_id}>
                     <button
                       type="button"
-                      onClick={() => toggleConstellation(name)}
+                      onClick={() => toggleConstellation(con.constellation_id)}
                       className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                        selectedConstellations.includes(name)
+                        selectedConstellations.includes(con.constellation_id)
                           ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
                           : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
                       }`}
@@ -257,7 +274,7 @@ export default function Sidebar() {
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
                         Image
                       </span>
-                      <span className="min-w-0 flex-1">{name}</span>
+                      <span className="min-w-0 flex-1">{con.constellation_id}</span>
                     </button>
                   </li>
                 ))}
@@ -274,6 +291,59 @@ export default function Sidebar() {
             </p>
           )}
         </div>
+
+        {/* Selected at bottom: Stars and Constellations separate */}
+        {(selectedStars?.length > 0 || selectedConstellations?.length > 0) && (
+          <div className="border-t border-blue-900/50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-blue-300/70">
+              Selected
+            </p>
+            {selectedStars?.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
+                  Stars
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedStars.map((hip) => {
+                    const star = MOCK_STARS.find((s) => s.hip === hip)
+                    return star ? (
+                      <button
+                        key={`star-${hip}`}
+                        type="button"
+                        onClick={() => toggleStar(hip)}
+                        className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                      >
+                        {star.name} ×
+                      </button>
+                    ) : null
+                  })}
+                </div>
+              </div>
+            )}
+            {selectedConstellations?.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
+                  Constellations
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedConstellations.map((constellation_id) => {
+                    const con = MOCK_CONSTELLATIONS.find((c) => c.constellation_id === constellation_id)
+                    return con ? (
+                      <button
+                        key={`const-${constellation_id}`}
+                        type="button"
+                        onClick={() => toggleConstellation(constellation_id)}
+                        className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                      >
+                        {con.name} ×
+                      </button>
+                    ) : null
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </aside>
     </>
   )

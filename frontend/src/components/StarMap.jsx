@@ -1,10 +1,30 @@
 import { useState, useEffect, useRef } from "react";
+import { tmp_star_data } from '../data/catalogMock.js'
 
-export default function StarMap() {
+
+/** Accepts only object shape { name?, hip?, x, y, radius?, color? }. Returns normalized { name, hip, x, y, radius, color }. */
+export function normalizeStar(s) {
+  if (!s || typeof s !== "object" || Array.isArray(s) || !("x" in s) || !("y" in s)) {
+    return { name: "", hip: null, x: 0, y: 0, radius: 0.5, color: "#ffffff" };
+  }
+  const name = s.name ?? s.star_name ?? s.id ?? (typeof s.label === "string" ? s.label : "");
+  const hip = s.hip != null ? s.hip : null;
+  return {name: String(name), hip, x: s.x, y: s.y, radius: s.radius ?? 0.5,color: s.color ?? s.hex ?? "#ffffff",};
+}
+
+const STARS_API = "http://127.0.0.1:8521/stars";
+
+export default function StarMap({
+  selectedStarIds = [],
+  stars: starsProp,
+  constellations = [],
+  selectedConstellationIds = [],
+}) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [stars, setStars] = useState([]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [hoveredStar, setHoveredStar] = useState(null);
 
   // Size canvas to container
   useEffect(() => {
@@ -37,6 +57,43 @@ export default function StarMap() {
     return () => clearInterval(interval);
   }, []);
 
+  // Hit-test mouse and set hovered star
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !Array.isArray(stars) || stars.length === 0) return;
+    const W = dimensions.width;
+    const H = dimensions.height;
+    const hitPadding = 12;
+
+    const handleMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      let found = null;
+      let minDist = Infinity;
+      for (const star of stars) {
+        const x = ((star.x + 1) / 2) * W;
+        const y = ((1 - star.y) / 2) * H;
+        const radius = (star.radius ?? 0.5) * 4 + hitPadding;
+        const dx = mx - x;
+        const dy = my - y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d <= radius && d < minDist) {
+          minDist = d;
+          found = star;
+        }
+      }
+      setHoveredStar((prev) => (found === prev ? prev : found));
+    };
+    const handleLeave = () => setHoveredStar(null);
+    canvas.addEventListener("mousemove", handleMove);
+    canvas.addEventListener("mouseleave", handleLeave);
+    return () => {
+      canvas.removeEventListener("mousemove", handleMove);
+      canvas.removeEventListener("mouseleave", handleLeave);
+    };
+  }, [stars, dimensions]);
+
   // Draw stars
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -53,6 +110,33 @@ export default function StarMap() {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, W, H);
 
+    // Constellation lines (draw before stars so stars sit on top)
+    const selectedConIds = Array.isArray(selectedConstellationIds) ? selectedConstellationIds : [];
+    const conList = Array.isArray(constellations) ? constellations : [];
+    const hipToStar = new Map(stars.map((s) => [s.hip, s]));
+    conList
+      .filter((c) => c && c.hip_ids && selectedConIds.includes(c.constellation_id))
+      .forEach((con) => {
+        const ids = con.hip_ids;
+        for (let i = 0; i + 1 < ids.length; i += 2) {
+          const a = hipToStar.get(ids[i]);
+          const b = hipToStar.get(ids[i + 1]);
+          if (a && b) {
+            const x1 = ((a.x + 1) / 2) * W;
+            const y1 = ((1 - a.y) / 2) * H;
+            const x2 = ((b.x + 1) / 2) * W;
+            const y2 = ((1 - b.y) / 2) * H;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = "rgba(150, 180, 255, 0.7)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+        }
+      });
+
+    const selectedIds = Array.isArray(selectedStarIds) ? selectedStarIds : [];
     stars.forEach((star) => {
       // Support both [x, y] arrays and {x, y} objects
       const rawX = Array.isArray(star) ? star[0] : star.x;
@@ -72,8 +156,39 @@ export default function StarMap() {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 255, 255, ${1 * 0.5 + 0.5})`;
       ctx.fill();
+
+      const starId = star.hip != null ? star.hip : null;
+      const isSelected = star.name && starId != null && selectedIds.includes(starId);
+      const isHovered = hoveredStar && star.name && (hoveredStar.name === star.name || (hoveredStar.hip != null && hoveredStar.hip === starId));
+      if (star.name && (isSelected || isHovered)) {
+        ctx.font = "14px 'Sour Gummy', cursive";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.fillText(star.name, x, y + radius + 4);
+      }
     });
-  }, [stars, dimensions]);
+
+    // Constellation name under the first star of each selected constellation
+    conList
+      .filter((c) => c && c.hip_ids && c.name && selectedConIds.includes(c.constellation_id))
+      .forEach((con) => {
+        const firstHip = con.hip_ids[0];
+        const firstStar = firstHip != null ? hipToStar.get(firstHip) : null;
+        if (!firstStar) return;
+        const rawX = firstStar.x ?? 0;
+        const rawY = firstStar.y ?? 0;
+        const radiusNorm = firstStar.radius ?? 0.5;
+        const x = ((rawX + 1) / 2) * W;
+        const y = ((1 - rawY) / 2) * H;
+        const radius = radiusNorm * 4;
+        ctx.font = "12px 'Sour Gummy', cursive";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "rgba(150, 180, 255, 0.9)";
+        ctx.fillText(con.name, x, y + radius + 18);
+      });
+  }, [stars, dimensions, selectedStarIds, selectedConstellationIds, constellations, hoveredStar]);
 
   return (
     <div

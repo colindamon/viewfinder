@@ -5,6 +5,12 @@
   --font-sour-gummy: "Sour Gummy", cursive;
 }
 
+/* Pointer cursor for all clickable elements */
+button,
+[role="button"] {
+  cursor: pointer;
+}
+
 /* Hide scrollbar but keep scrolling */
 .scrollbar-hide {
   -ms-overflow-style: none;
