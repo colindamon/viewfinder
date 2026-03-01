@@ -77,7 +77,12 @@ def get_frontend_stars(camera_coords, star_df, fov_deg=60.0):
     """
     projected, visible_mask = project_to_normalized_2d(camera_coords, fov_deg)
 
-    vis_idx = np.where(visible_mask)[0]
+    # Include stars up to 2x the FOV so constellation lines that cross
+    # the screen edge still render (the canvas clips naturally).
+    in_front = camera_coords[:, 2] > 0
+    include_mask = in_front & (np.abs(projected[:, 0]) <= 2.5) & (np.abs(projected[:, 1]) <= 2.5)
+
+    vis_idx = np.where(include_mask)[0]
     if len(vis_idx) == 0:
         return []
 
