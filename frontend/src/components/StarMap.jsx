@@ -22,9 +22,11 @@ export default function StarMap({
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const [stars, setStars] = useState([]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredStar, setHoveredStar] = useState(null);
+  
+  const stars = starsProp !== undefined && Array.isArray(starsProp) ? starsProp : localStars;
+
 
   // Size canvas to container
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function StarMap({
     // Poll every 100ms for live updates
     const interval = setInterval(fetchStars, 100);
     return () => clearInterval(interval);
-  }, []);
+  }, [starsProp]);
 
   // Hit-test mouse and set hovered star
   useEffect(() => {

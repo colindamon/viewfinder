@@ -4,7 +4,27 @@ import Sidebar from './Sidebar.jsx'
 import {tmp_star_data, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
 
 const Home = () => {
-  const [started, setStarted] = useState(false)
+    const [started, setStarted] = useState(false)
+    const [stars, setStars] = useState([])
+    const [selectedStars, setSelectedStars] = useState([])
+    const [selectedConstellations, setSelectedConstellations] = useState([])
+
+    useEffect(() => {
+        async function fetchStars() {
+        try {
+            const res = await fetch(STARS_API)
+            const data = await res.json()
+            const list = Array.isArray(data) ? data : tmp_star_data
+            setStars(list.map((s) => normalizeStar(s)))
+        } catch (e) {
+            setStars(tmp_star_data)
+            console.error('Failed to fetch stars:', e)
+        }
+        }
+        fetchStars()
+        const interval = setInterval(fetchStars, 100)
+        return () => clearInterval(interval)
+    }, [])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
