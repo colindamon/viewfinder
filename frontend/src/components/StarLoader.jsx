@@ -19,7 +19,7 @@ export default function StarLoader({ message = "Loading" }) {
   );
 
   return (
-    <div className="relative inline-flex h-40 w-40 items-center justify-center">
+    <div className="relative bg-black inline-flex h-40 w-40 items-center justify-center">
       {/* Twinkling stars scattered around center */}
       <div className="absolute inset-0">
         {stars.map((s) => (

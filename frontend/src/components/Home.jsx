@@ -137,7 +137,8 @@ const Home = () => {
           aria-label="Start"
         >
           {!allLoaded ? (
-            <StarLoader message="Loading stars" />
+            <StarLoader 
+            message="Loading stars"/>
           ) : (
             <>
               <h1 className="text-[11rem] tracking-widest font-tangerine font-bold">Viewfinder</h1>
