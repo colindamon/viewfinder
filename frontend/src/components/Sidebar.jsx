@@ -274,7 +274,7 @@ export default function Sidebar({
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
                         Image
                       </span>
-                      <span className="min-w-0 flex-1">{con.name}</span>
+                      <span className="min-w-0 flex-1">{con.constellation_id}</span>
                     </button>
                   </li>
                 ))}

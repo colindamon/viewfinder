@@ -30,7 +30,6 @@ export const MOCK_CONSTELLATIONS = [
   {
     constellation_id: "Aql",
     name: "Aquila",
-    num_stars: 4,
     hip_ids: [97649, 91262, 91262, 102098, 102098, 24608, 24608, 97649],
   },
 ];
