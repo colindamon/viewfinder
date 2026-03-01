@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-csv_path = "python/assets/named_stars.csv"
+csv_path = "python/assets/stars.csv"
 
 def load_star_xyz() -> np.ndarray:
     """
@@ -23,7 +23,7 @@ def load_star_xyz() -> np.ndarray:
     return star_xyz
 
 
-def load_star_df(csv_path: str) -> pd.DataFrame:
+def load_star_df() -> pd.DataFrame:
     """
     Load star metadata from a CSV into a DataFrame for use with frontend_agent.py.
 
@@ -45,6 +45,7 @@ def load_star_df(csv_path: str) -> pd.DataFrame:
         same CSV to stay aligned with star_xyz.
     """
     star_df = pd.read_csv(Path(csv_path), usecols=["hip", "proper", "mag", "ci"])
+    star_df["proper"] = star_df["proper"].fillna("")
     return star_df
 
 
@@ -74,7 +75,3 @@ def get_star_xyz_by_hip(hip_id: int, star_df: pd.DataFrame, star_xyz: np.ndarray
     if not matches:
         return None
     return star_xyz[matches[0]]
-
-
-if __name__ == "__main__":
-    print(load_star_xyz('/Users/aish/Documents/Workspace/Hackathons/IrvineHacks2026/viewfinder/backend/src/assets/named_stars.csv'))

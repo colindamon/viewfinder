@@ -12,6 +12,8 @@ unsigned long previousMillis = 0;
 unsigned long lastTime = 0;
 const long interval = 50;
 
+int ledRows[8] = {0,0,0,0,0,0,0,0};
+
 void clearMatrix() {
   matBuf[0] = matBuf[1] = matBuf[2] = matBuf[3] = 0;
 }
@@ -44,6 +46,33 @@ void drawArrow(float angleDeg) {
   matrixWrite(matBuf);
 }
 
+void renderLedRows() {
+  clearMatrix();
+  for (int row = 0; row < 8; row++) {
+    for (int col = 0; col < 13; col++) {
+      if ((ledRows[row] >> (12 - col)) & 1) {
+        setPixel(row, col);
+      }
+    }
+  }
+  matrixWrite(matBuf);
+}
+
+void set_led_top(int r0, int r1, int r2, int r3) {
+  ledRows[0] = r0;
+  ledRows[1] = r1;
+  ledRows[2] = r2;
+  ledRows[3] = r3;
+}
+
+void set_led_bottom(int r4, int r5, int r6, int r7) {
+  ledRows[4] = r4;
+  ledRows[5] = r5;
+  ledRows[6] = r6;
+  ledRows[7] = r7;
+  renderLedRows();
+}
+
 void setup() {
   matrixBegin();
   Bridge.begin();
@@ -60,11 +89,15 @@ void setup() {
     delay(1000);
   }
 
+  Bridge.provide("set_led_top", set_led_top);
+  Bridge.provide("set_led_bottom", set_led_bottom);
+
   lastTime = millis();
 }
 
 void loop() {
   unsigned long currentMillis = millis();
+
   if (currentMillis - previousMillis >= interval) {
     lastTime = currentMillis;
     previousMillis = currentMillis;
@@ -77,33 +110,13 @@ void loop() {
       float gy = movement.getPitch();
       float gz = movement.getYaw();
 
-      // Elevation from accelerometer
       float elevation = acos(constrain(-nz, -1.0f, 1.0f)) * 180.0 / PI;
 
-      // Send accelerometer data
       Bridge.notify("record_sensor_movement", nx, ny, nz);
-
-      // Send raw gyro to Python for orientation tracking
       Bridge.notify("record_sensor_gyro", gx, gy, gz);
-
-      // Send elevation
       Bridge.notify("record_elevation", elevation);
-
-      // Draw arrow based on yaw (comes back from Python via pointing_data)
-      // Use gz integrated roughly for immediate feedback on matrix
-      static float yaw = 0.0f;
-      static unsigned long lastArrowTime = 0;
-      float dt = (currentMillis - lastArrowTime) / 1000.0f;
-      lastArrowTime = currentMillis;
-      yaw += gz * dt;
-      if (yaw > 180.0f)  yaw -= 360.0f;
-      if (yaw < -180.0f) yaw += 360.0f;
-
-      static float lastArrowAngle = 0;
-      if (abs(yaw - lastArrowAngle) > 3.0f) {
-        lastArrowAngle = yaw;
-        drawArrow(yaw);
-      }
     }
   }
+
+  Bridge.update();
 }
