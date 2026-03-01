@@ -2,29 +2,59 @@ import React, { useState, useEffect } from 'react'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
 import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
+import { API_BASE } from '../config.js'
 
-const STARS_API = "http://127.0.0.1:7000/stars";
+const STARS_API = `${API_BASE}/stars`
+const STAR_NAMES_API = `${API_BASE}/star_names`
+const CONSTELLATIONS_NAMES_API = `${API_BASE}/constellation_names`
+const CONSTELLATION_LINES_API = `${API_BASE}/constellations`
 
 const Home = () => {
     const [started, setStarted] = useState(false)
     const [stars, setStars] = useState([])
     const [selectedStars, setSelectedStars] = useState([])
-    const [selectedConstellations, setSelectedConstellations] = useState([])
+    const [starNames, setStarNames] = useState([])       // { name, hip }[] for Sidebar
+    const [constellationsNames, setConstellationsNames] = useState([]) // { constellation_id, name, first_hip }[] for Sidebar
+    const [constellationLines, setConstellationLines] = useState([])   // { constellation_id, name, hip_ids }[] for StarMap
 
     useEffect(() => {
         async function fetchStars() {
-        try {
-            const res = await fetch(STARS_API)
-            const data = await res.json()
-            const list = Array.isArray(data) ? data : tmp_star_data
-            setStars(list.map((s) => normalizeStar(s)))
-        } catch (e) {
-            setStars(tmp_star_data)
-            console.error('Failed to fetch stars:', e)
-        }
+            try {
+                const res = await fetch(STARS_API)
+                const data = await res.json()
+                const list = Array.isArray(data) ? data : tmp_star_data
+                setStars(list.map((s) => normalizeStar(s)))
+            } catch (e) {
+                setStars(tmp_star_data)
+                console.error('Failed to fetch stars:', e)
+            }
         }
         fetchStars()
         const interval = setInterval(fetchStars, 100)
+        return () => clearInterval(interval)
+    }, [])
+
+    useEffect(() => {
+        async function fetchCatalog() {
+            try {
+                const [namesRes, conNamesRes, conLinesRes] = await Promise.all([
+                    fetch(STAR_NAMES_API),
+                    fetch(CONSTELLATIONS_NAMES_API),
+                    fetch(CONSTELLATION_LINES_API),
+                ])
+                const names = await namesRes.json()
+                const conNames = await conNamesRes.json()
+                const conLines = await conLinesRes.json()
+                setStarNames(Array.isArray(names) ? names : [])
+                setConstellationsNames(Array.isArray(conNames) ? conNames : [])
+                setConstellationLines(Array.isArray(conLines) ? conLines : CONSTELLATION_LINES)
+            } catch (e) {
+                console.error('Failed to fetch catalog:', e)
+                setConstellationLines(CONSTELLATION_LINES)
+            }
+        }
+        fetchCatalog()
+        const interval = setInterval(fetchCatalog, 500)
         return () => clearInterval(interval)
     }, [])
 
@@ -34,16 +64,15 @@ const Home = () => {
         <StarMap
           selectedStarIds={selectedStars}
           stars={stars}
-          constellations={CONSTELLATION_LINES}
-          selectedConstellationIds={selectedConstellations}
+          constellations={constellationLines}
         />
-      </div>
+      </div> 
       {started && (
         <Sidebar
           selectedStars={selectedStars}
           setSelectedStars={setSelectedStars}
-          selectedConstellations={selectedConstellations}
-          setSelectedConstellations={setSelectedConstellations}
+          starNames={starNames}
+          constellationsNames={constellationsNames}
         />
       )}
       {!started && (

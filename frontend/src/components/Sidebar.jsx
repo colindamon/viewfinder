@@ -1,19 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { MOCK_STARS, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
+import { API_BASE } from '../config.js'
 import bluestar1 from '../assets/bluestar1.png'
 import bluestar2 from '../assets/bluestar2.png'
+
+const FIND_STAR_API = `${API_BASE}/find_star`
+const CANCEL_FIND_STAR_API = `${API_BASE}/cancel_find_star`
 
 export default function Sidebar({
   selectedStars = [],
   setSelectedStars,
-  selectedConstellations = [],
-  setSelectedConstellations,
+  starNames = [],
+  constellationsNames = [],
 }) {
+  const stars = starNames.length > 0 ? starNames : MOCK_STARS
+  const constellations = constellationsNames.length > 0 ? constellationsNames : MOCK_CONSTELLATIONS
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all') // 'all' | 'stars' | 'constellations'
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
+  const prevActiveStarIdRef = useRef(null)
   const [activeStarId, setActiveStarId] = useState(null)
 
   const toggleStar = (hip) => {
@@ -21,12 +28,8 @@ export default function Sidebar({
       prev.includes(hip) ? prev.filter((id) => id !== hip) : [...prev, hip]
     )
   }
-  const toggleConstellation = (constellation_id) => {
-    setSelectedConstellations?.((prev) =>
-      prev.includes(constellation_id) ? prev.filter((id) => id !== constellation_id) : [...prev, constellation_id]
-    )
-  }
 
+  /** Set the single "point to" target (star or constellation's first star). Only one can be active at a time. */
   const setActiveStar = (hip) => {
     setActiveStarId((prev) => (prev === hip ? null : hip))
   }
@@ -39,10 +42,10 @@ export default function Sidebar({
     />
   )
 
-  const filteredStars = MOCK_STARS.filter((star) =>
+  const filteredStars = stars.filter((star) =>
     star.name.toLowerCase().includes(search.toLowerCase())
   )
-  const filteredConstellations = MOCK_CONSTELLATIONS.filter((con) =>
+  const filteredConstellations = constellations.filter((con) =>
     con.name.toLowerCase().includes(search.toLowerCase())
   )
 
@@ -59,6 +62,23 @@ export default function Sidebar({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [filterOpen])
+
+  useEffect(() => {
+    if (activeStarId != null) {
+      fetch(FIND_STAR_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hip: activeStarId }),
+      }).catch((e) => console.error('Failed to POST find_star:', e))
+    } else if (prevActiveStarIdRef.current != null) {
+      fetch(CANCEL_FIND_STAR_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch((e) => console.error('Failed to POST cancel_find_star:', e))
+    }
+    prevActiveStarIdRef.current = activeStarId
+  }, [activeStarId])
 
   return (
     <>
@@ -97,7 +117,7 @@ export default function Sidebar({
 
       {/* Sidebar panel */}
       <aside
-        className={`fixed right-0 top-0 z-30 flex h-full w-[min(380px,90vw)] flex-col rounded-l-2xl font-sour-gummy bg-[#001E39] shadow-xl transition-transform duration-200 ease-out sm:shadow-2xl ${
+        className={`viewfinder-sidebar fixed right-0 top-0 z-30 flex h-full w-[min(380px,90vw)] flex-col rounded-l-2xl font-sour-gummy bg-[#001E39] shadow-xl transition-transform duration-200 ease-out sm:shadow-2xl ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -237,7 +257,7 @@ export default function Sidebar({
                           ? 'border-blue-500 bg-[#1a365d] text-blue-50'
                           : ' border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400'
                       }`}
-                      aria-label={activeStarId === star.hip ? 'Deselect star' : 'Select star'}
+                      aria-label={activeStarId === star.hip ? 'Deselect (only one star or constellation can be active)' : 'Point to star'}
                     >
                       <StarIcon active={activeStarId === star.hip} />
                     </button>
@@ -249,28 +269,49 @@ export default function Sidebar({
 
           {showConstellations && (
             <>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-blue-300/70">
-                Constellations
-              </p>
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold tracking-wider text-blue-300/70">
+                  Constellations
+                </p>
+                <span className="font-semibold shrink-0 text-right text-xs leading-tight text-blue-400/90">
+                  Point to constellation
+                </span>
+              </div>
               <ul className="flex flex-col gap-2">
-                {filteredConstellations.map((con) => (
-                  <li key={con.constellation_id}>
-                    <button
-                      type="button"
-                      onClick={() => toggleConstellation(con.constellation_id)}
-                      className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                        selectedConstellations.includes(con.constellation_id)
-                          ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
-                          : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
-                      }`}
-                    >
-                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
-                        Image
-                      </span>
-                      <span className="min-w-0 flex-1">{con.name}</span>
-                    </button>
-                  </li>
-                ))}
+                {filteredConstellations.map((con) => {
+                  const firstHip = con.first_hip ?? null
+                  const isActive = firstHip != null && activeStarId === firstHip
+                  return (
+                    <li key={con.constellation_id} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 rounded-md border border-blue-900/50 px-3 py-2.5 text-left text-sm text-blue-100/90 transition-colors hover:border-blue-700 hover:bg-[#1a365d]/70"
+                      >
+                        <span className="flex items-center gap-3">
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
+                            Image
+                          </span>
+                          <span className="block truncate">{con.name}</span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (firstHip != null) setActiveStar(firstHip)
+                        }}
+                        disabled={firstHip == null}
+                        className={`flex h-9 w-9 mx-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                          isActive
+                            ? 'border-blue-500 bg-[#1a365d] text-blue-50'
+                            : 'border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400 disabled:opacity-50 disabled:pointer-events-none'
+                        }`}
+                        aria-label={isActive ? 'Deselect (only one star or constellation can be active)' : 'Point to constellation (sets active star to first star in constellation)'}
+                      >
+                        <StarIcon active={isActive} />
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </>
           )}
@@ -285,56 +326,32 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Selected at bottom: Stars and Constellations separate */}
-        {(selectedStars?.length > 0 || selectedConstellations?.length > 0) && (
+        {/* Selected at bottom: Stars only */}
+        {selectedStars?.length > 0 && (
           <div className="border-t border-blue-900/50 p-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-blue-300/70">
               Selected
             </p>
-            {selectedStars?.length > 0 && (
-              <div className="mb-3">
-                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
-                  Stars
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedStars.map((hip) => {
-                    const star = MOCK_STARS.find((s) => s.hip === hip)
-                    return star ? (
-                      <button
-                        key={`star-${hip}`}
-                        type="button"
-                        onClick={() => toggleStar(hip)}
-                        className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
-                      >
-                        {star.name} ×
-                      </button>
-                    ) : null
-                  })}
-                </div>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
+                Stars
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedStars.map((hip) => {
+                  const star = stars.find((s) => s.hip === hip)
+                  return star ? (
+                    <button
+                      key={`star-${hip}`}
+                      type="button"
+                      onClick={() => toggleStar(hip)}
+                      className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
+                    >
+                      {star.name} ×
+                    </button>
+                  ) : null
+                })}
               </div>
-            )}
-            {selectedConstellations?.length > 0 && (
-              <div>
-                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-blue-400/80">
-                  Constellations
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedConstellations.map((constellation_id) => {
-                    const con = MOCK_CONSTELLATIONS.find((c) => c.constellation_id === constellation_id)
-                    return con ? (
-                      <button
-                        key={`const-${constellation_id}`}
-                        type="button"
-                        onClick={() => toggleConstellation(constellation_id)}
-                        className="rounded-md border border-blue-500 bg-[#1a365d] px-2.5 py-1 text-xs text-blue-50 transition-colors hover:bg-[#1e4073]"
-                      >
-                        {con.name} ×
-                      </button>
-                    ) : null
-                  })}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
       </aside>

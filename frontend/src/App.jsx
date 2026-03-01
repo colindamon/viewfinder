@@ -1,14 +1,51 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import Home from './components/Home'
+import StarLoader from './components/StarLoader'
+import { API_BASE } from './config.js'
+
+const STARS_API = `${API_BASE}/stars`
 
 function App() {
   const [count, setCount] = useState(0)
-
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
   const path = window.location.pathname
 
-  if (path === '/home') {
+  useEffect(() => {
+    let cancelled = false
+    const timeout = setTimeout(() => {
+      if (!cancelled) setIsInitialLoad(false)
+    }, 8000)
+
+    async function waitForFetch() {
+      try {
+        const res = await fetch(STARS_API)
+        await res.json()
+      } catch {
+        // Fallback handled in Home; just proceed
+      }
+      if (!cancelled) {
+        clearTimeout(timeout)
+        setIsInitialLoad(false)
+      }
+    }
+    waitForFetch()
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [])
+
+  if (isInitialLoad) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <StarLoader message="Loading" />
+      </div>
+    )
+  }
+
+  if (path === '/home' || path === '/' || path === '') {
     return <Home />
   }
 
