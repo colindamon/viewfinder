@@ -287,12 +287,7 @@ export default function Sidebar({
                         type="button"
                         className="min-w-0 flex-1 rounded-md border border-blue-900/50 px-3 py-2.5 text-left text-sm text-blue-100/90 transition-colors hover:border-blue-700 hover:bg-[#1a365d]/70"
                       >
-                        <span className="flex items-center gap-3">
-                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
-                            Image
-                          </span>
-                          <span className="block truncate">{con.name}</span>
-                        </span>
+                        <span className="block truncate">{con.name}</span>
                       </button>
                       <button
                         type="button"
