@@ -38,7 +38,8 @@ export default function Sidebar({
     <img
       src={active ? bluestar2 : bluestar1}
       alt={active ? 'Star selected' : 'Star'}
-      className="h-6 w-6 shrink-0 object-contain"
+      className="h-6 w-6 shrink-0 object-contain pointer-events-none"
+    draggable={false}
     />
   )
 
