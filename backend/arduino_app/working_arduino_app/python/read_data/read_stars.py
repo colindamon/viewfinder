@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-def load_star_xyz(csv_path: str) -> np.ndarray:
+csv_path = "python/assets/named_stars.csv"
+
+def load_star_xyz() -> np.ndarray:
     """
     Load star positions from a CSV into a NumPy array.
 
