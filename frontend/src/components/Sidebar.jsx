@@ -26,6 +26,7 @@ export default function Sidebar({
   const [filter, setFilter] = useState('all') // 'all' | 'stars' | 'constellations'
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
+  const [activeStarName, setActiveStarName] = useState(null)
 
   const toggleStar = (name) => {
     setSelectedStars?.((prev) =>
@@ -37,6 +38,27 @@ export default function Sidebar({
       prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
     )
   }
+
+  const setActiveStar = (name) => {
+    setActiveStarName((prev) => (prev === name ? null : name))
+  }
+
+  const ArrowIcon = ({ active }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="20"
+      height="12"
+      viewBox="0 0 20 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 ${active ? 'text-blue-400' : 'text-blue-300/50'}`}
+    >
+      <path d="M2 6h14M12 2l6 4-6 4" />
+    </svg>
+  )
 
   const starNames = Array.isArray(stars) && stars.length > 0
     ? stars.map((s) => s.name).filter(Boolean)
@@ -222,22 +244,43 @@ export default function Sidebar({
         <div className="scrollbar-hide flex-1 overflow-y-auto p-3">
           {showStars && (
             <>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-blue-300/70">
-                Stars
-              </p>
-              <ul className="mb-6 grid grid-cols-2 gap-2">
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold tracking-wider text-blue-300/70">
+                  Stars
+                </p>
+                <span className="font-semibold shrink-0 text-right text-xs leading-tight text-blue-400/90">
+                  Point to star
+                </span>
+              </div>
+              <ul className="mb-6 flex flex-col gap-2">
                 {filteredStars.map((name) => (
-                  <li key={name}>
+                  <li key={name} className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => toggleStar(name)}
-                      className={`w-full rounded-md border px-3 py-4 text-left text-sm transition-colors ${
+                      onClick={() => {
+                        toggleStar(name)
+                      }}
+                      className={`min-w-0 flex-1 rounded-md border px-3 py-2.5 text-left text-sm transition-colors ${
                         selectedStars.includes(name)
                           ? 'border-blue-500 bg-[#1a365d] font-medium text-blue-50'
                           : 'border-blue-900/50 text-blue-100/90 hover:border-blue-700 hover:bg-[#1a365d]/70'
                       }`}
                     >
-                      {name}
+                      <span className="block truncate">{name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveStar(name)
+                      }}
+                      className={`flex h-9 w-9 mx-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                        activeStarName === name
+                          ? 'border-blue-500 bg-[#1a365d] text-blue-50'
+                          : 'border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400'
+                      }`}
+                      aria-label={activeStarName === name ? 'Deselect star' : 'Select star'}
+                    >
+                      <ArrowIcon active={activeStarName === name}/>
                     </button>
                   </li>
                 ))}
