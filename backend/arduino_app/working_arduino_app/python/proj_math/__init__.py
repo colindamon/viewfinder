@@ -1,3 +1,3 @@
 from .orientation import OrientationTracker
 from .frontend_agent import get_frontend_stars, constellation_names, star_names, get_visible_constellations
-from .rotation_agent import get_led_view, build_led_frame, gyro_to_rotation_matrix, get_direction_to_star
+from .rotation_agent import get_led_view, build_led_frame, gyro_to_rotation_matrix, get_direction_to_star, build_direction_frame

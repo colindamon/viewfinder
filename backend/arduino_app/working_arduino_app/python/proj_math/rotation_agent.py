@@ -1,9 +1,8 @@
 """
 rotation_agent.py — Viewfinder
 --------------------------------
-Rotation and projection pipeline for mapping HYG star coordinates
-into 2D display space based on device orientation (yaw, pitch, roll)
-from the Modulino Movement.
+Transforms HYG 3D star coordinates into 2D display coordinates
+based on device orientation (yaw, pitch, roll) from the Modulino Movement.
 
 Coordinate Systems
 ------------------
@@ -17,10 +16,10 @@ Camera space (after rotation):
     +Y → up
     +Z → into the screen (the direction we're pointing)
 
-Outputs
--------
-    get_led_view()   → pixel positions for the Arduino LED matrix
-    _project_stars() → shared normalised 2D coords for frontend_agent.py
+2D output:
+    (0, 0) → top-left of display
+    (cols-1, rows-1) → bottom-right of display
+    For the LED matrix, default is 12 cols x 8 rows (adjust as needed)
 """
 
 import numpy as np
@@ -110,7 +109,7 @@ def transform_stars_to_camera(
     unit_xyz = star_xyz / norms
 
     # Apply rotation: each row is a star, so we transpose for matrix multiply
-    camera_coords = (camera_matrix @ unit_xyz.T).T              # shape (N, 3)
+    camera_coords = (camera_matrix @ unit_xyz.T).T  # shape (N, 3)
     return camera_coords
 
 
@@ -129,7 +128,7 @@ def project_to_normalized_2d(
         Output of transform_stars_to_camera().
     fov_deg : float
         Horizontal field of view in degrees. A smaller value = more zoomed in.
-        Typical LED matrix FOV: 20–40°.
+        Typical LED matrix FOV: 20–40°. Frontend FOV: 60°.
 
     Returns
     -------
@@ -171,7 +170,7 @@ def normalize_to_led_pixels(
     rows: int = 8
 ) -> np.ndarray:
     """
-    Map normalised [-1, 1] 2D coordinates to integer pixel positions on the display.
+    Map normalised [-1, 1] 2D coordinates to integer pixel positions on the LED matrix.
 
     Parameters
     ----------
@@ -207,84 +206,32 @@ def normalize_to_led_pixels(
 # ---------------------------------------------------------------------------
 # Shared internal pipeline helper
 # ---------------------------------------------------------------------------
-def _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg):
+
+def _project_stars(
+    star_xyz: np.ndarray,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float,
+    fov_deg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Internal helper — shared by get_led_view and get_frontend_stars.
+
+    Runs the full rotation + projection pipeline and returns normalised 2D
+    coordinates and a visibility mask. Centralises these three steps so they
+    are never duplicated across output functions.
+
+    Not intended to be called directly by the FastAPI server or Arduino code.
+    Use get_led_view or get_frontend_stars instead.
+    """
     camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
     camera_coords = transform_stars_to_camera(star_xyz, camera_matrix)
     return project_to_normalized_2d(camera_coords, fov_deg)
 
 
-def get_direction_to_star(
-    star_xyz_single: np.ndarray,
-    yaw_deg: float,
-    pitch_deg: float,
-    roll_deg: float,
-) -> dict:
-    """
-    Returns a 2D vector pointing toward a target star relative to the current
-    camera orientation. Intended to be polled in a while loop alongside
-    get_led_view() to drive an arrow on the LED matrix.
-
-    If the star is within the current FOV the arrow vector will be near (0, 0).
-    If the star is off to the left, x will be negative. If above, y will be
-    positive. The frontend and LED matrix can use the angle and magnitude of
-    the vector to determine arrow direction and urgency.
-
-    Parameters
-    ----------
-    star_xyz_single : np.ndarray, shape (3,)
-        World-space coordinates of the target star from get_star_xyz_by_id().
-    yaw_deg : float
-        Yaw from orientation.py (degrees).
-    pitch_deg : float
-        Pitch from orientation.py (degrees).
-    roll_deg : float
-        Roll from orientation.py (degrees).
-
-    Returns
-    -------
-    dict with keys:
-        "dx"       : float — horizontal offset, negative = star is left, positive = right
-        "dy"       : float — vertical offset, negative = star is below, positive = above
-        "angle"    : float — direction of the arrow in degrees, 0° = right, 90° = up
-        "distance" : float — angular distance to the star in degrees, useful for
-                     scaling arrow intensity or deciding when to stop showing the arrow
-        "in_view"  : bool  — True if the star is currently within the default FOV
-    """
-    # Normalise the target star to a unit vector
-    norm = np.linalg.norm(star_xyz_single)
-    if norm == 0:
-        return {"dx": 0.0, "dy": 0.0, "angle": 0.0, "distance": 0.0, "in_view": False}
-    unit_star = star_xyz_single / norm
-
-    # Rotate into camera space using the current orientation
-    camera_matrix = gyro_to_rotation_matrix(yaw_deg, pitch_deg, roll_deg)
-    star_camera = camera_matrix @ unit_star  # shape (3,)
-
-    # dx, dy are the horizontal and vertical offsets in camera space
-    # star_camera[2] is depth — positive means star is in front of camera
-    dx = float(star_camera[0])
-    dy = float(star_camera[1])
-    dz = float(star_camera[2])
-
-    # Angular distance from the camera's forward axis to the star (degrees)
-    # Clamp for numerical safety before arccos
-    dot = float(np.clip(dz, -1.0, 1.0))
-    distance_deg = float(np.degrees(np.arccos(dot)))
-
-    # 2D arrow angle: atan2(y, x) gives angle in radians from +x axis
-    angle_deg = float(np.degrees(np.arctan2(dy, dx)))
-
-    # In view if the star is in front of camera and within default LED FOV (30°)
-    in_view = dz > 0 and distance_deg <= 15.0  # 15° = half of 30° FOV
-
-    return {
-        "dx":       dx,
-        "dy":       dy,
-        "angle":    angle_deg,
-        "distance": distance_deg,
-        "in_view":  in_view,
-    }
-
+# ---------------------------------------------------------------------------
+# High-level output functions
+# ---------------------------------------------------------------------------
 
 def get_led_view(
     star_xyz: np.ndarray,
@@ -298,22 +245,27 @@ def get_led_view(
     """
     Full pipeline: HYG xyz → LED matrix pixel positions.
 
+    The primary output function for the Arduino. Takes the current device
+    orientation from orientation.py and the full star array, and returns
+    a pixel map ready to be written to the LED matrix via build_led_frame().
+
     Parameters
     ----------
     star_xyz : np.ndarray, shape (N, 3)
         HYG x, y, z for N stars.
     yaw_deg : float
-        Yaw from Modulino (degrees).
+        Yaw from orientation.py (degrees).
     pitch_deg : float
-        Pitch from Modulino (degrees).
+        Pitch from orientation.py (degrees).
     roll_deg : float
-        Roll from Modulino (degrees).
+        Roll from orientation.py (degrees).
     fov_deg : float
-        Horizontal field of view (degrees). Adjust to taste.
+        Horizontal field of view in degrees. Narrower than the frontend (30°)
+        to match the physical scale of the LED matrix.
     cols : int
-        LED matrix columns.
+        LED matrix columns (default 12).
     rows : int
-        LED matrix rows.
+        LED matrix rows (default 8).
 
     Returns
     -------
@@ -324,8 +276,97 @@ def get_led_view(
     """
     projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
     pixels = normalize_to_led_pixels(projected, visible_mask, cols, rows)
-
     return pixels, visible_mask
+
+
+def get_frontend_direction(yaw_deg: float, pitch_deg: float) -> dict:
+    """
+    Returns the device's current pointing direction for the frontend.
+
+    Called whenever the Arduino sends a new orientation reading, independently
+    of the star list. The frontend uses this to draw a bounding box on its
+    full sky map showing where the device is currently aimed.
+
+    Parameters
+    ----------
+    yaw_deg : float
+        Yaw from orientation.py (degrees).
+    pitch_deg : float
+        Pitch from orientation.py (degrees).
+
+    Returns
+    -------
+    dict with keys:
+        "pointing" : {"yaw": float, "pitch": float}
+        "fov_deg"  : float — the device's FOV so the frontend can size the bounding box
+    """
+    return {
+        "pointing": {"yaw": yaw_deg, "pitch": pitch_deg},
+        "fov_deg":  60.0,
+    }
+
+
+def get_frontend_stars(
+    star_xyz: np.ndarray,
+    star_df,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float,
+    fov_deg: float = 60.0,
+) -> list:
+    """
+    Full pipeline: HYG xyz → frontend-ready list of visible stars.
+
+    The primary output function for the React frontend. Can be called both
+    when the Arduino is active (live orientation) and when the user is
+    browsing the sky map independently on the laptop. Returns only the stars
+    currently in view — the frontend never touches the star database directly.
+
+    FOV is intentionally wider than get_led_view (60° vs 30°) since the
+    frontend has a full screen to work with.
+
+    Parameters
+    ----------
+    star_xyz : np.ndarray, shape (N, 3)
+        HYG x, y, z columns for N stars.
+    star_df : pd.DataFrame
+        The full HYG DataFrame, aligned row-for-row with star_xyz.
+        Expected columns: "proper", "mag", "con".
+    yaw_deg : float
+        Yaw from orientation.py (degrees).
+    pitch_deg : float
+        Pitch from orientation.py (degrees).
+    roll_deg : float
+        Roll from orientation.py (degrees). Used in the projection but not
+        returned — roll doesn't change what region of sky is visible.
+    fov_deg : float
+        Horizontal field of view in degrees (default 60°).
+
+    Returns
+    -------
+    list of dicts, one per visible star:
+        "x"             : float, normalised -1 (left) to +1 (right)
+        "y"             : float, normalised -1 (bottom) to +1 (top)
+        "name"          : str or None — proper name if one exists in HYG
+        "magnitude"     : float — brightness, lower is brighter
+        "constellation" : str — IAU constellation abbreviation e.g. "Ori"
+    """
+    projected, visible_mask = _project_stars(star_xyz, yaw_deg, pitch_deg, roll_deg, fov_deg)
+
+    visible_proj = projected[visible_mask]
+    visible_meta = star_df[visible_mask].reset_index(drop=True)
+
+    return [
+        {
+            "x":             float(visible_proj[i, 0]),   # -1 (left)  to +1 (right)
+            "y":             float(visible_proj[i, 1]),   # -1 (bottom) to +1 (top)
+            "name":          visible_meta.at[i, "proper"] if visible_meta.at[i, "proper"] else None,
+            "magnitude":     float(visible_meta.at[i, "mag"]),
+            "constellation": visible_meta.at[i, "con"],
+        }
+        for i in range(len(visible_proj))
+    ]
+
 
 def build_led_frame(
     pixels: np.ndarray,
@@ -336,6 +377,9 @@ def build_led_frame(
     """
     Convert pixel positions into a boolean LED matrix frame.
 
+    Called after get_led_view() to produce the final on/off grid that gets
+    written directly to the Arduino LED matrix hardware.
+
     Parameters
     ----------
     pixels : np.ndarray, shape (N, 2)
@@ -343,9 +387,9 @@ def build_led_frame(
     visible_mask : np.ndarray, shape (N,)
         Visibility mask from get_led_view().
     cols : int
-        LED matrix columns.
+        LED matrix columns (default 12).
     rows : int
-        LED matrix rows.
+        LED matrix rows (default 8).
 
     Returns
     -------
@@ -358,4 +402,80 @@ def build_led_frame(
     for col, row in visible_pixels:
         if 0 <= row < rows and 0 <= col < cols:
             frame[row, col] = True
+    return frame
+
+
+def build_direction_frame(
+    direction: dict,
+    cols: int = 12,
+    rows: int = 8
+) -> np.ndarray:
+    """
+    Convert a get_direction_to_star() result into a boolean LED matrix frame
+    showing an arrow pointing toward the target star.
+
+    Counterpart to build_led_frame() — where build_led_frame() renders the
+    star field, this renders the navigation arrow when find_star_mode is active.
+
+    If the star is in view, the four cardinal LEDs around the matrix center
+    light up as a found indicator. Otherwise, the full edge of the matrix
+    corresponding to the arrow direction is lit, pointing the user toward
+    the target.
+
+    Parameters
+    ----------
+    direction : dict
+        Output of get_direction_to_star(). Expected keys:
+            "angle"   : float — direction in degrees, 0° = right, 90° = up
+            "in_view" : bool  — True if the star is within the current FOV
+    cols : int
+        LED matrix columns (default 12).
+    rows : int
+        LED matrix rows (default 8).
+
+    Returns
+    -------
+    frame : np.ndarray, shape (rows, cols), dtype bool
+        True = LED on, False = LED off.
+        Index as frame[row][col].
+    """
+    frame = np.zeros((rows, cols), dtype=bool)
+
+    if direction["in_view"]:
+        # Star is visible — light four cardinal LEDs around center as found indicator
+        center_row = rows // 2
+        center_col = cols // 2
+        for row, col in [
+            (center_row,     center_col),
+            (center_row,     center_col - 1),
+            (center_row,     center_col + 1),
+            (center_row - 1, center_col),
+            (center_row + 1, center_col),
+        ]:
+            if 0 <= row < rows and 0 <= col < cols:
+                frame[row, col] = True
+        return frame
+
+    angle = direction["angle"]  # 0° = right, 90° = up, ±180° = left
+
+    if -45 <= angle < 45:
+        # Star is to the right — light right edge column
+        for row in range(rows):
+            frame[row, cols - 1] = True
+
+    elif 45 <= angle < 135:
+        # Star is above — light top edge row
+        for col in range(cols):
+            frame[0, col] = True
+
+    elif angle >= 135 or angle < -135:
+        # Star is to the left — light left edge column
+        for row in range(rows):
+            frame[row, 0] = True
+
+    else:
+        # Star is below (-135 to -45) — light bottom edge row
+        for col in range(cols):
+            frame[rows - 1, col] = True
+
     return frame

@@ -11,9 +11,7 @@ import time
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
 from read_data import load_star_xyz, load_star_df, load_constellations
-from proj_math import get_frontend_stars, OrientationTracker, constellation_names, star_names, get_visible_constellations, get_led_view, build_led_frame, get_direction_to_star
-
-CONFIDENCE = 0.4
+from proj_math import get_frontend_stars, OrientationTracker, constellation_names, star_names, get_visible_constellations, get_led_view, build_led_frame, build_direction_frame, get_direction_to_star
 motion_detection = MotionDetection(confidence=CONFIDENCE)
 
 logger = Logger("real-time-accelerometer")
@@ -123,7 +121,7 @@ def reset_orientation():
     web_ui.send_message('orientation_reset', {})
     return {"status": "orientation reset"}
 
-def find_star(data: dict):
+async def find_star(data: dict):
     global find_star_mode, find_star_xyz_target, find_star_name
     hip_id = data.get("hip")
     if hip_id is None:
@@ -140,7 +138,7 @@ def find_star(data: dict):
     web_ui.send_message('find_star_started', {"name": find_star_name})
     return {"status": "find star started", "name": find_star_name}
 
-def cancel_find_star():
+async def cancel_find_star():
     global find_star_mode, find_star_xyz_target, find_star_name
     find_star_mode = False
     find_star_xyz_target = None
@@ -213,7 +211,7 @@ def record_sensor_movement(x: float, y: float, z: float):
         logger.exception(f"record_sensor_movement: Error: {e}")
 
 def record_sensor_gyro(x: float, y: float, z: float):
-    global is_calibrating, calibration_start, pointing_data, frontend_stars, visible_constellations, current_fov
+    global is_calibrating, calibration_start, pointing_data, frontend_stars, visible_constellations, current_fov, find_star_mode, find_star_xyz_target, find_star_name
 
     try:
         sample = {"t": time.time(), "x": float(x), "y": float(y), "z": float(z)}
@@ -252,17 +250,22 @@ def record_sensor_gyro(x: float, y: float, z: float):
     try:
         if find_star_mode and find_star_xyz_target is not None:
             direction = get_direction_to_star(find_star_xyz_target, yaw, pitch, roll)
-            Bridge.notify("set_find_star",
-                float(direction["angle"]),
-                float(direction["distance"]),
-                1.0 if direction["in_view"] else 0.0)
+            frame = build_direction_frame(direction)
+            send_led_frame(frame)
             web_ui.send_message('find_star_status', direction)
+
             if direction["in_view"]:
+                # Star found — notify frontend, then return to star view mode
                 web_ui.send_message('star_found', {"name": find_star_name})
+                find_star_mode = False
+                find_star_xyz_target = None
+                find_star_name = None
+                # Sketch handles the celebration blink and calls cancel_find_star()
+                # internally — no need to send another Bridge.notify here
         else:
+            # Normal star view mode
             pixels, visible_mask = get_led_view(star_xyz, yaw, pitch, roll, fov_deg=current_fov)
             frame = build_led_frame(pixels, visible_mask)
-            logger.debug(f"LED frame sum: {frame.sum()} visible stars: {visible_mask.sum()}")
             send_led_frame(frame)
 
         frontend_stars = get_frontend_stars(star_xyz, star_df, yaw, pitch, roll)

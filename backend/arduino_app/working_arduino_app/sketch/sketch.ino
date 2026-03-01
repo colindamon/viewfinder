@@ -153,18 +153,26 @@ void loop() {
 
     if (currentMode == MODE_FIND_STAR) {
       if (starInView) {
-        unsigned long blinkInterval = 150;
-        if (currentMillis - lastBlinkMillis >= blinkInterval) {
-          lastBlinkMillis = currentMillis;
-          blinkState = !blinkState;
-          if (blinkState) {
-            matBuf[0] = matBuf[1] = matBuf[2] = 0xFFFFFFFF;
-            matBuf[3] = 0xFF;
-          } else {
-            clearMatrix();
+          unsigned long blinkInterval = 150;
+          if (currentMillis - lastBlinkMillis >= blinkInterval) {
+              lastBlinkMillis = currentMillis;
+              blinkState = !blinkState;
+              if (blinkState) {
+                  matBuf[0] = matBuf[1] = matBuf[2] = 0xFFFFFFFF;
+                  matBuf[3] = 0xFF;
+              } else {
+                  clearMatrix();
+              }
+              matrixWrite(matBuf);
+
+              // After 3 full blinks (6 transitions), auto-cancel back to star view
+              static int blinkCount = 0;
+              blinkCount++;
+              if (blinkCount >= 6) {
+                  blinkCount = 0;
+                  cancel_find_star();
+              }
           }
-          matrixWrite(matBuf);
-        }
       } else {
         unsigned long blinkInterval = (unsigned long)(100 + (findDistance / 180.0f) * 900.0f);
         if (currentMillis - lastBlinkMillis >= blinkInterval) {
