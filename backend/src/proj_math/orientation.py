@@ -48,8 +48,8 @@ class OrientationTracker:
         # --- tunable ---
         self.AXIS_MAP = {
             "yaw":   "z",     # which gyro axis drives yaw
-            "pitch": "x",     # which gyro axis drives pitch
-            "roll":  "y",     # which gyro axis drives roll
+            "pitch": "y",     # which gyro axis drives pitch
+            "roll":  "x",     # which gyro axis drives roll
         }
         self.YAW_SIGN   =  1  # flip to -1 if yaw direction is inverted
         self.PITCH_SIGN =  1  # flip to -1 if pitch direction is inverted
