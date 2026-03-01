@@ -1,5 +1,26 @@
 import { useState, useEffect, useRef } from "react";
 
+/** Draws a rounded 5-pointed star path centered at (cx, cy) with outer radius R. Uses inner radius 0.4*R. */
+function drawRoundedStarPath(ctx, cx, cy, R) {
+  const r = R * 0.4;
+  const points = [];
+  for (let i = 0; i < 5; i++) {
+    const outerAngle = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const innerAngle = -Math.PI / 2 + Math.PI / 5 + (i * 2 * Math.PI) / 5;
+    points.push({ x: cx + R * Math.cos(outerAngle), y: cy + R * Math.sin(outerAngle) });
+    points.push({ x: cx + r * Math.cos(innerAngle), y: cy + r * Math.sin(innerAngle) });
+  }
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const p = (i) => points[i % 10];
+  ctx.moveTo(mid(p(9), p(0)).x, mid(p(9), p(0)).y);
+  for (let i = 0; i < 10; i++) {
+    const curr = p(i);
+    const next = p(i + 1);
+    ctx.quadraticCurveTo(curr.x, curr.y, mid(curr, next).x, mid(curr, next).y);
+  }
+  ctx.closePath();
+}
+
 /** Accepts only object shape { name?, hip?, x, y, radius?, color? }. Returns normalized { name, hip, x, y, radius, color }. */
 export function normalizeStar(s) {
   if (!s || typeof s !== "object" || Array.isArray(s) || !("x" in s) || !("y" in s)) {
@@ -10,13 +31,10 @@ export function normalizeStar(s) {
   return {name: String(name), hip, x: s.x, y: s.y, radius: s.radius ?? 0.5,color: s.color ?? s.hex ?? "#ffffff",};
 }
 
-const STARS_API = "http://127.0.0.1:8521/stars";
-
 export default function StarMap({
   selectedStarIds = [],
   stars: starsProp,
   constellations = [],
-  selectedConstellationIds = [],
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -37,25 +55,6 @@ export default function StarMap({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-
-  // Fetch stars from board
-  useEffect(() => {
-    async function fetchStars() {
-      try {
-        const res = await fetch(STARS_API);
-        const data = await res.json();
-        setStars(Array.isArray(data) ? data : []);
-      } catch (e) {
-        setStars([[-0.40576192514494985,0.3451111084649369],[-0.5914978540804372,-0.7170030954421401],[-0.9715462205914551,0.04160203304070043],[0.8925463904539088,-0.6158671253788274],[0.4604050572889368,0.5637755523177171],[0.7070173049830311,0.41953878931256233],[-0.3182887343855583,-0.20729725643554178],[-0.15258534173148663,0.18172757923542407],[0.5421084429434894,0.546159425819435],[0.8092228438483666,-0.19044099176711396],[-0.2227576299841516,-0.42689203616808336],[0.9674622779441048,0.8341517178140798],[-0.43626106836419676,0.3639821508952296],[-0.43631792662357305,0.3639983814603577],[0.8954056725793402,-0.16502271896648868],[0.014327519982456616,-0.8780088818630097],[-0.38612883826731537,-0.1788180517829953],[0.5539584440503244,0.023679934073593076],[0.07546590069957947,0.7847255000205945],[-0.6803503908174705,-0.5354039078591697],[-0.25911721616297867,0.9412512816865602],[-0.495499038709325,0.23308428535764028]]);
-        console.error("Failed to fetch stars:", e);
-      }
-    }
-    fetchStars();
-
-    // Poll every 100ms for live updates
-    const interval = setInterval(fetchStars, 100);
-    return () => clearInterval(interval);
-  }, [starsProp]);
 
   // Hit-test mouse and set hovered star
   useEffect(() => {
@@ -110,12 +109,11 @@ export default function StarMap({
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, W, H);
 
-    // Constellation lines (draw before stars so stars sit on top)
-    const selectedConIds = Array.isArray(selectedConstellationIds) ? selectedConstellationIds : [];
+    // Constellation lines (draw before stars so stars sit on top) — show all in constellation lines data
     const conList = Array.isArray(constellations) ? constellations : [];
     const hipToStar = new Map(stars.map((s) => [s.hip, s]));
     conList
-      .filter((c) => c && c.hip_ids && selectedConIds.includes(c.constellation_id))
+      .filter((c) => c && c.hip_ids)
       .forEach((con) => {
         const ids = con.hip_ids;
         for (let i = 0; i + 1 < ids.length; i += 2) {
@@ -151,10 +149,31 @@ export default function StarMap({
       // Filter out stars outside the canvas
       if (x < 0 || x > W || y < 0 || y > H) return;
 
-      const radius = 1 * 1.5 + 0.5;
+      const radiusNorm = star.radius ?? 0.5;
+      const radius = Math.max(1, radiusNorm * 4);
+      let fillColor = star.color ?? star.hex ?? "#ffffff";
+      if (typeof fillColor === "string" && fillColor && fillColor[0] !== "#") {
+        fillColor = "#" + fillColor;
+      }
+      // Subtle glow: radial gradient in star color
+      let hex = fillColor.replace(/^#/, "");
+      if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      const r = parseInt(hex.slice(0, 2), 16) || 255;
+      const g = parseInt(hex.slice(2, 4), 16) || 255;
+      const b = parseInt(hex.slice(4, 6), 16) || 255;
+      const glowRadius = radius * 3.5;
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+      gradient.addColorStop(0, `rgba(${r},${g},${b},0.3)`);
+      gradient.addColorStop(0.5, `rgba(${r},${g},${b},0.1)`);
+      gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
       ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 255, 255, ${1 * 0.5 + 0.5})`;
+      ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      // Star core (rounded 5-point star)
+      ctx.beginPath();
+      drawRoundedStarPath(ctx, x, y, radius*1.5);
+      ctx.fillStyle = fillColor;
       ctx.fill();
 
       const starId = star.hip != null ? star.hip : null;
@@ -169,9 +188,9 @@ export default function StarMap({
       }
     });
 
-    // Constellation name under the first star of each selected constellation
+    // Constellation name under the first star of each constellation
     conList
-      .filter((c) => c && c.hip_ids && c.name && selectedConIds.includes(c.constellation_id))
+      .filter((c) => c && c.hip_ids && c.name)
       .forEach((con) => {
         const firstHip = con.hip_ids[0];
         const firstStar = firstHip != null ? hipToStar.get(firstHip) : null;
@@ -188,7 +207,7 @@ export default function StarMap({
         ctx.fillStyle = "rgba(150, 180, 255, 0.9)";
         ctx.fillText(con.name, x, y + radius + 18);
       });
-  }, [stars, dimensions, selectedStarIds, selectedConstellationIds, constellations, hoveredStar]);
+  }, [stars, dimensions, selectedStarIds, constellations, hoveredStar]);
 
   return (
     <div

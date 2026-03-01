@@ -24,16 +24,17 @@ export const MOCK_STARS = [
   { name: "Alcyone", hip: 17702 },
 ];
 
-/** Mock constellation catalog for Sidebar: { constellation_id, name } only. */
+/** Mock constellation catalog for Sidebar: { constellation_id, name, first_hip }.
+ *  first_hip = first star in the constellation (for setting activeStarId when user points to constellation). */
 export const MOCK_CONSTELLATIONS = [
-  { constellation_id: "Ori", name: "Orion" },
-  { constellation_id: "UMa", name: "Ursa Major" },
-  { constellation_id: "Cas", name: "Cassiopeia" },
-  { constellation_id: "Cyg", name: "Cygnus" },
-  { constellation_id: "Lyr", name: "Lyra" },
-  { constellation_id: "Sco", name: "Scorpius" },
-  { constellation_id: "Leo", name: "Leo" },
-  { constellation_id: "Aql", name: "Aquila" },
+  { constellation_id: "Ori", name: "Orion", first_hip: 26727 },
+  { constellation_id: "UMa", name: "Ursa Major", first_hip: 67301 },
+  { constellation_id: "Cas", name: "Cassiopeia", first_hip: 8886 },
+  { constellation_id: "Cyg", name: "Cygnus", first_hip: 94779 },
+  { constellation_id: "Lyr", name: "Lyra", first_hip: 91262 },
+  { constellation_id: "Sco", name: "Scorpius", first_hip: 85927 },
+  { constellation_id: "Leo", name: "Leo", first_hip: 57632 },
+  { constellation_id: "Aql", name: "Aquila", first_hip: 98036 },
 ];
 
 /** Constellation line data for StarMap: { constellation_id, name, hip_ids }.
