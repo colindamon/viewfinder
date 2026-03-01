@@ -10,10 +10,9 @@ from collections import deque
 import time
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
-from read_data import load_star_xyz
-from proj_math import get_frontend_stars, OrientationTracker
-
-
+from read_data import load_star_xyz, load_star_df
+from proj_math import get_frontend_stars, OrientationTracker, get_led_view, build_led_frame
+from proj_math.rotation_agent import gyro_to_rotation_matrix
 
 CONFIDENCE = 0.4
 motion_detection = MotionDetection(confidence=CONFIDENCE)
@@ -23,7 +22,8 @@ logger.debug(f"MotionDetection instantiated with confidence={CONFIDENCE}")
 
 tracker = OrientationTracker()
 
-star_xyz = load_star_xyz('/app/python/assets/named_stars.csv')
+star_xyz = load_star_xyz()
+star_df = load_star_df()
 
 # Calibration state
 is_calibrating = False
@@ -33,7 +33,12 @@ CALIBRATION_DURATION = 1.5
 
 # Pointing state
 pointing_data = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "elevation": 0.0}
-frontend_stars = {}
+frontend_stars = []
+
+# Find star state
+find_star_mode = False
+find_star_xyz = None
+find_star_name = None
 
 detection_df = pd.DataFrame(
     {
@@ -57,6 +62,16 @@ SAMPLES_MAX = 200
 samples = deque(maxlen=SAMPLES_MAX)
 gyro_samples = deque(maxlen=SAMPLES_MAX)
 orientation_data = {"ax": 0.0, "ay": 0.0, "az": 0.0, "angle": 0.0}
+
+def send_led_frame(frame: np.ndarray):
+    rows = []
+    for row in frame:
+        val = 0
+        for bit in row:
+            val = (val << 1) | int(bit)
+        rows.append(int(val))
+    Bridge.notify("set_led_top", rows[0], rows[1], rows[2], rows[3])
+    Bridge.notify("set_led_bottom", rows[4], rows[5], rows[6], rows[7])
 
 def _get_detection():
     return detection_df.to_dict(orient='records')[0]
@@ -95,6 +110,32 @@ def reset_orientation():
     web_ui.send_message('orientation_reset', {})
     return {"status": "orientation reset"}
 
+def find_star(data: dict):
+    global find_star_mode, find_star_xyz, find_star_name
+    star_id = data.get("id")
+    if star_id is None:
+        return {"error": "no id provided"}
+    row = star_df[star_df["id"] == star_id]
+    if row.empty:
+        return {"error": f"star id {star_id} not found"}
+    xyz = row[["x", "y", "z"]].to_numpy(dtype=float)[0]
+    norm = np.linalg.norm(xyz)
+    find_star_xyz = xyz / norm if norm > 0 else xyz
+    find_star_name = row["proper"].values[0] if "proper" in row.columns else str(star_id)
+    find_star_mode = True
+    logger.info(f"Find star mode: {find_star_name}")
+    web_ui.send_message('find_star_started', {"name": find_star_name})
+    return {"status": "find star started", "name": find_star_name}
+
+def cancel_find_star():
+    global find_star_mode, find_star_xyz, find_star_name
+    find_star_mode = False
+    find_star_xyz = None
+    find_star_name = None
+    Bridge.notify("cancel_find_star")
+    web_ui.send_message('find_star_cancelled', {})
+    return {"status": "cancelled"}
+
 web_ui.expose_api("GET", "/detection", _get_detection)
 web_ui.expose_api("GET", "/test", test_print)
 web_ui.expose_api("GET", "/samples", _get_samples)
@@ -104,6 +145,8 @@ web_ui.expose_api("GET", "/pointing", _get_pointing)
 web_ui.expose_api("GET", "/stars", _get_frontend_stars)
 web_ui.expose_api("POST", "/calibrate", start_calibration)
 web_ui.expose_api("POST", "/reset", reset_orientation)
+web_ui.expose_api("POST", "/find_star", find_star)
+web_ui.expose_api("POST", "/cancel_find_star", cancel_find_star)
 
 web_ui.on_connect(
     lambda sid: (
@@ -194,12 +237,33 @@ def record_sensor_gyro(x: float, y: float, z: float):
     except Exception:
         logger.debug('Failed to emit pointing websocket message')
 
-    # Call math function and stream result
+    # LED matrix + frontend stars
     try:
-        frontend_stars = get_frontend_stars(star_xyz, yaw, pitch, roll)
+        if find_star_mode and find_star_xyz is not None:
+            cam_mat = gyro_to_rotation_matrix(yaw, pitch, roll)
+            target_cam = cam_mat @ find_star_xyz
+            angle_to_target = float(np.degrees(np.arctan2(target_cam[0], target_cam[2])))
+            angular_distance = float(np.degrees(np.arccos(np.clip(target_cam[2], -1, 1))))
+            in_view = angular_distance < 15.0
+            Bridge.notify("set_find_star", angle_to_target, angular_distance, 1.0 if in_view else 0.0)
+            web_ui.send_message('find_star_status', {
+                "angle": round(angle_to_target, 1),
+                "distance": round(angular_distance, 1),
+                "in_view": in_view
+            })
+            if in_view:
+                web_ui.send_message('star_found', {"name": find_star_name})
+        else:
+            pixels, visible_mask = get_led_view(star_xyz, yaw, pitch, roll)
+            frame = build_led_frame(pixels, visible_mask)
+            logger.debug(f"LED frame sum: {frame.sum()} visible stars: {visible_mask.sum()}")
+            send_led_frame(frame)
+
+        # Always update frontend stars
+        frontend_stars = get_frontend_stars(star_xyz, star_df, yaw, pitch, roll)
         web_ui.send_message('frontend_stars', frontend_stars)
     except Exception as e:
-        logger.exception(f"math function error: {e}")
+        logger.exception(f"LED/math function error: {e}")
 
 def record_orientation(ax: float, ay: float, az: float, angle: float):
     global orientation_data
