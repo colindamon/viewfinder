@@ -1,6 +1,7 @@
 import pandas as pd
 import json
 from pathlib import Path
+import ast
 
 _DEFAULT_CSV = "python/assets/constellations.csv"
 
