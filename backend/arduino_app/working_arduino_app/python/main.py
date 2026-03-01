@@ -6,44 +6,45 @@ from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 from arduino.app_bricks.motion_detection import MotionDetection
 import pandas as pd
-from collections import deque
 import time
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
-from read_data import load_star_xyz
-from proj_math import get_frontend_stars, OrientationTracker
+from read_data import load_star_xyz, load_star_df, load_constellations
+from proj_math import get_frontend_stars, OrientationTracker, constellation_names, star_names, get_visible_constellations
+from collections import deque
 
+#------Setup-----------------------------------------------------
 
-
-CONFIDENCE = 0.4
-motion_detection = MotionDetection(confidence=CONFIDENCE)
-
-logger = Logger("real-time-accelerometer")
-logger.debug(f"MotionDetection instantiated with confidence={CONFIDENCE}")
-
-tracker = OrientationTracker()
-
-star_xyz = load_star_xyz('/app/python/assets/named_stars.csv')
-
-# Calibration state
-is_calibrating = False
-calibration_samples = {"x": [], "y": [], "z": []}
-calibration_start = None
+SAMPLES_MAX = 200
 CALIBRATION_DURATION = 1.5
+CONFIDENCE = 0.4
 
-# Pointing state
-pointing_data = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "elevation": 0.0}
-frontend_stars = {}
+class AppState:
+    def __init__(self):
+        self.star_xyz = load_star_xyz()
+        self.star_df = load_star_df()
+        self.constellations = load_constellations()
+        self.pointing_data = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "elevation": 0.0}
+        self.frontend_stars = {}
+        self.orientation_data = {"ax": 0.0, "ay": 0.0, "az": 0.0, "angle": 0.0}
+        self.detection_df = pd.DataFrame(
+            {
+                'idle':   [0.0],
+                'snake':  [0.0],
+                'updown': [0.0],
+                'wave':   [0.0]
+            }
+        )
+        self.samples = deque(maxlen=SAMPLES_MAX)
+        self.gyro_samples = deque(maxlen=SAMPLES_MAX)
+        self.is_calibrating = False
+        self.calibration_start = None
+        self.calibration_samples = {"x": [], "y": [], "z": []}
 
-detection_df = pd.DataFrame(
-    {
-        'idle': [0.0],
-        'snake': [0.0],
-        'updown': [0.0],
-        'wave' : [0.0]
-    }
-)
-
+state = AppState()
+logger = Logger("real-time-accelerometer")
+tracker = OrientationTracker()
+motion_detection = MotionDetection(confidence=CONFIDENCE)
 web_ui = WebUI()
 web_ui.app.add_middleware(
     CORSMiddleware,
@@ -53,39 +54,44 @@ web_ui.app.add_middleware(
     allow_headers=["*"],
 )
 
-SAMPLES_MAX = 200
-samples = deque(maxlen=SAMPLES_MAX)
-gyro_samples = deque(maxlen=SAMPLES_MAX)
-orientation_data = {"ax": 0.0, "ay": 0.0, "az": 0.0, "angle": 0.0}
+#------ WebUI -----------------------------------------------------
 
 def _get_detection():
-    return detection_df.to_dict(orient='records')[0]
+    return state.detection_df.to_dict(orient='records')[0]
 
 def test_print():
     return {"text": "this is some beautiful json that is cool and will be a great test"}
 
 def _get_samples():
-    return list(samples)
+    return list(state.samples)
 
 def _get_gyro_samples():
-    return list(gyro_samples)
+    return list(state.gyro_samples)
 
 def _get_orientation():
-    return orientation_data
+    return state.orientation_data
 
 def _get_pointing():
-    return pointing_data
+    return state.pointing_data
 
 def _get_frontend_stars():
-    return frontend_stars
+    return state.frontend_stars
+
+def _get_constellations():
+    return get_visible_constellations(state.constellations, state.frontend_stars)
+
+def _get_star_names():
+    return star_names(state.star_df)
+
+def _get_constellations_names():
+    return constellation_names(state.constellations)
 
 def start_calibration():
-    global is_calibrating, calibration_start
-    is_calibrating = True
-    calibration_start = time.time()
-    calibration_samples["x"].clear()
-    calibration_samples["y"].clear()
-    calibration_samples["z"].clear()
+    state.is_calibrating = True
+    state.calibration_start = time.time()
+    state.calibration_samples["x"].clear()
+    state.calibration_samples["y"].clear()
+    state.calibration_samples["z"].clear()
     logger.info("Calibration started — hold still!")
     web_ui.send_message('calibration_started', {})
     return {"status": "calibration started"}
@@ -102,33 +108,37 @@ web_ui.expose_api("GET", "/gyro_samples", _get_gyro_samples)
 web_ui.expose_api("GET", "/orientation", _get_orientation)
 web_ui.expose_api("GET", "/pointing", _get_pointing)
 web_ui.expose_api("GET", "/stars", _get_frontend_stars)
+web_ui.expose_api("GET", "/constellations", _get_constellations)
+web_ui.expose_api("GET", "/star_names", _get_star_names)
+web_ui.expose_api("GET", "/constellations_names", _get_constellations_names)
 web_ui.expose_api("POST", "/calibrate", start_calibration)
 web_ui.expose_api("POST", "/reset", reset_orientation)
 
 web_ui.on_connect(
     lambda sid: (
         logger.debug(f"Client connected: {sid} - sending current detection"),
-        web_ui.send_message('movement', detection_df.to_dict(orient='records')[0]),
-        web_ui.send_message('pointing', pointing_data),
-        web_ui.send_message('frontend_stars', frontend_stars)
+        web_ui.send_message('movement', state.detection_df.to_dict(orient='records')[0]),
+        web_ui.send_message('pointing', state.pointing_data),
+        web_ui.send_message('frontend_stars', state.frontend_stars)
     )
 )
+
+#------ Arduino -----------------------------------------------------
 
 def on_movement_detected(classification: dict):
     if not classification:
         return
     try:
-        global detection_df
-        detection_df = pd.DataFrame(
+        state.detection_df = pd.DataFrame(
             {
-                'idle': [classification.get('idle', 0.0)],
-                'snake': [classification.get('snake', 0.0)],
+                'idle':   [classification.get('idle', 0.0)],
+                'snake':  [classification.get('snake', 0.0)],
                 'updown': [classification.get('updown', 0.0)],
-                'wave' : [classification.get('wave', 0.0)]
+                'wave':   [classification.get('wave', 0.0)]
             }
         )
         try:
-            web_ui.send_message('movement', detection_df.to_dict(orient='records')[0])
+            web_ui.send_message('movement', state.detection_df.to_dict(orient='records')[0])
         except Exception as e:
             logger.warning(f"Failed to broadcast 'movement' message: {e}")
     except Exception as e:
@@ -146,7 +156,7 @@ def record_sensor_movement(x: float, y: float, z: float):
         z_ms2 = z * 9.81
         motion_detection.accumulate_samples((x_ms2, y_ms2, z_ms2))
         sample = {"t": time.time(), "x": float(x), "y": float(y), "z": float(z)}
-        samples.append(sample)
+        state.samples.append(sample)
         try:
             web_ui.send_message('sample', sample)
         except Exception:
@@ -155,65 +165,57 @@ def record_sensor_movement(x: float, y: float, z: float):
         logger.exception(f"record_sensor_movement: Error: {e}")
 
 def record_sensor_gyro(x: float, y: float, z: float):
-    global is_calibrating, calibration_start, pointing_data, frontend_stars
-
-    # Store for gyro chart
     try:
         sample = {"t": time.time(), "x": float(x), "y": float(y), "z": float(z)}
-        gyro_samples.append(sample)
+        state.gyro_samples.append(sample)
         web_ui.send_message('gyro_sample', sample)
     except Exception:
         logger.debug('Failed to emit gyro sample websocket message')
 
-    # Calibration — collect samples for 1.5s then compute bias
-    if is_calibrating:
-        calibration_samples["x"].append(x)
-        calibration_samples["y"].append(y)
-        calibration_samples["z"].append(z)
-        if time.time() - calibration_start >= CALIBRATION_DURATION:
-            tracker._bias_x = float(np.mean(calibration_samples["x"]))
-            tracker._bias_y = float(np.mean(calibration_samples["y"]))
-            tracker._bias_z = float(np.mean(calibration_samples["z"]))
+    if state.is_calibrating:
+        state.calibration_samples["x"].append(x)
+        state.calibration_samples["y"].append(y)
+        state.calibration_samples["z"].append(z)
+        if time.time() - state.calibration_start >= CALIBRATION_DURATION:
+            tracker._bias_x = float(np.mean(state.calibration_samples["x"]))
+            tracker._bias_y = float(np.mean(state.calibration_samples["y"]))
+            tracker._bias_z = float(np.mean(state.calibration_samples["z"]))
             tracker._calibrated = True
             tracker._last_time = time.time()
-            calibration_samples["x"].clear()
-            calibration_samples["y"].clear()
-            calibration_samples["z"].clear()
-            is_calibrating = False
+            state.calibration_samples["x"].clear()
+            state.calibration_samples["y"].clear()
+            state.calibration_samples["z"].clear()
+            state.is_calibrating = False
             web_ui.send_message('calibration_done', {})
             logger.info(f"Calibration complete. Bias → x:{tracker._bias_x:.4f} y:{tracker._bias_y:.4f} z:{tracker._bias_z:.4f}")
         return
 
-    # Normal operation — feed into tracker
     yaw, pitch, roll = tracker.update(x, y, z)
-    pointing_data["yaw"] = round(yaw, 1)
-    pointing_data["pitch"] = round(pitch, 1)
-    pointing_data["roll"] = round(roll, 1)
+    state.pointing_data["yaw"] = round(yaw, 1)
+    state.pointing_data["pitch"] = round(pitch, 1)
+    state.pointing_data["roll"] = round(roll, 1)
     try:
-        web_ui.send_message('pointing', pointing_data)
+        web_ui.send_message('pointing', state.pointing_data)
     except Exception:
         logger.debug('Failed to emit pointing websocket message')
 
-    # Call math function and stream result
     try:
-        frontend_stars = get_frontend_stars(star_xyz, yaw, pitch, roll)
-        web_ui.send_message('frontend_stars', frontend_stars)
+        state.frontend_stars = get_frontend_stars(star_xyz, yaw, pitch, roll)
+        web_ui.send_message('frontend_stars', state.frontend_stars)
     except Exception as e:
         logger.exception(f"math function error: {e}")
 
 def record_orientation(ax: float, ay: float, az: float, angle: float):
-    global orientation_data
-    orientation_data = {
+    state.orientation_data = {
         "ax": round(ax, 3),
         "ay": round(ay, 3),
         "az": round(az, 3),
         "angle": round(angle, 1)
     }
-    web_ui.send_message('orientation', orientation_data)
+    web_ui.send_message('orientation', state.orientation_data)
 
 def record_elevation(elevation: float):
-    global pointing_data
-    pointing_data["elevation"] = round(elevation, 1)
+    state.pointing_data["elevation"] = round(elevation, 1)
 
 try:
     Bridge.provide("record_sensor_movement", record_sensor_movement)
