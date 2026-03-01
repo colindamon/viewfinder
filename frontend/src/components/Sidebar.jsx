@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { MOCK_STARS, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
+import bluestar1 from '../assets/bluestar1.png'
+import bluestar2 from '../assets/bluestar2.png'
 
 export default function Sidebar({
   selectedStars = [],
@@ -29,21 +31,12 @@ export default function Sidebar({
     setActiveStarId((prev) => (prev === hip ? null : hip))
   }
 
-  const ArrowIcon = ({ active }) => (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="12"
-      viewBox="0 0 20 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`shrink-0 ${active ? 'text-blue-400' : 'text-blue-300/50'}`}
-    >
-      <path d="M2 6h14M12 2l6 4-6 4" />
-    </svg>
+  const StarIcon = ({ active }) => (
+    <img
+      src={active ? bluestar2 : bluestar1}
+      alt={active ? 'Star selected' : 'Star'}
+      className="h-6 w-6 shrink-0 object-contain"
+    />
   )
 
   const filteredStars = MOCK_STARS.filter((star) =>
@@ -242,11 +235,11 @@ export default function Sidebar({
                       className={`flex h-9 w-9 mx-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
                         activeStarId === star.hip
                           ? 'border-blue-500 bg-[#1a365d] text-blue-50'
-                          : 'border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400'
+                          : ' border-blue-900/50 text-blue-300/50 hover:border-blue-600/60 hover:text-blue-400'
                       }`}
                       aria-label={activeStarId === star.hip ? 'Deselect star' : 'Select star'}
                     >
-                      <ArrowIcon active={activeStarId === star.hip} />
+                      <StarIcon active={activeStarId === star.hip} />
                     </button>
                   </li>
                 ))}
@@ -274,7 +267,7 @@ export default function Sidebar({
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-blue-900/50 bg-[#1a365d] text-blue-300/50 text-xs">
                         Image
                       </span>
-                      <span className="min-w-0 flex-1">{con.constellation_id}</span>
+                      <span className="min-w-0 flex-1">{con.name}</span>
                     </button>
                   </li>
                 ))}

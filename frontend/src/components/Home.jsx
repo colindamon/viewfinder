@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
-import {tmp_star_data, MOCK_CONSTELLATIONS } from '../data/catalogMock.js'
+import { tmp_star_data, CONSTELLATION_LINES } from '../data/catalogMock.js'
+
+const STARS_API = "http://127.0.0.1:7000/stars";
 
 const Home = () => {
     const [started, setStarted] = useState(false)
@@ -32,7 +34,7 @@ const Home = () => {
         <StarMap
           selectedStarIds={selectedStars}
           stars={stars}
-          constellations={MOCK_CONSTELLATIONS}
+          constellations={CONSTELLATION_LINES}
           selectedConstellationIds={selectedConstellations}
         />
       </div>
