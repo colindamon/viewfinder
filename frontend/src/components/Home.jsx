@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { io } from 'socket.io-client'
 import StarMap, { normalizeStar } from './StarMap.jsx'
 import Sidebar from './Sidebar.jsx'
@@ -20,10 +20,23 @@ const Home = () => {
     const [starNames, setStarNames] = useState([])
     const [constellationsNames, setConstellationsNames] = useState([])
     const [constellationLines, setConstellationLines] = useState(CONSTELLATION_LINES)
+    const [findStarDirection, setFindStarDirection] = useState(null)
     const socketRef = useRef(null)
     const socketAliveRef = useRef(false)
 
     const allLoaded = starsLoaded && catalogLoaded
+
+    const handleCameraMove = useCallback((dx, dy) => {
+        socketRef.current?.emit('camera_move', { dx, dy })
+    }, [])
+
+    const handleCameraZoom = useCallback((delta) => {
+        socketRef.current?.emit('camera_zoom', { delta })
+    }, [])
+
+    const handleCameraRoll = useCallback((delta) => {
+        socketRef.current?.emit('camera_roll', { delta })
+    }, [])
 
     // Socket.IO: receive live star data pushed from backend (low latency path)
     useEffect(() => {
@@ -41,6 +54,10 @@ const Home = () => {
                 setStars(list.map((s) => normalizeStar(s)))
                 setStarsLoaded(true)
             }
+        })
+
+        socket.on('find_star_direction', (data) => {
+            setFindStarDirection(data?.active ? data : null)
         })
 
         socket.on('connect', () => {
@@ -119,6 +136,10 @@ const Home = () => {
           selectedStarIds={selectedStars}
           stars={stars}
           constellations={constellationLines}
+          onCameraMove={handleCameraMove}
+          onCameraZoom={handleCameraZoom}
+          onCameraRoll={handleCameraRoll}
+          findStarDirection={findStarDirection}
         />
       </div> 
       {started && (

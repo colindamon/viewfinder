@@ -35,12 +35,16 @@ export default function StarMap({
   selectedStarIds = [],
   stars: starsProp,
   constellations = [],
+  onCameraMove,
+  onCameraZoom,
+  onCameraRoll,
+  findStarDirection,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredStar, setHoveredStar] = useState(null);
-  
+  const isDraggingRef = useRef(false);
   const stars = starsProp !== undefined && Array.isArray(starsProp) ? starsProp : localStars;
 
 
@@ -56,6 +60,77 @@ export default function StarMap({
     return () => ro.disconnect();
   }, []);
 
+  // Drag to pan, scroll to zoom (only active when callbacks are provided)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !onCameraMove) return;
+
+    let lastX = 0;
+    let lastY = 0;
+
+    const handleMouseDown = (e) => {
+      if (e.button !== 0) return;
+      isDraggingRef.current = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      canvas.style.cursor = "grabbing";
+    };
+
+    const handleMouseMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      onCameraMove(dx, dy);
+    };
+
+    const handleMouseUp = () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      canvas.style.cursor = "grab";
+    };
+
+    const handleWheel = (e) => {
+      e.preventDefault();
+      if (onCameraZoom) onCameraZoom(e.deltaY > 0 ? 3 : -3);
+    };
+
+    canvas.style.cursor = "grab";
+    canvas.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      canvas.removeEventListener("wheel", handleWheel);
+    };
+  }, [onCameraMove, onCameraZoom]);
+
+  // Arrow keys to roll camera (left/right)
+  useEffect(() => {
+    if (!onCameraRoll) return;
+
+    const handleKeyDown = (e) => {
+      if (e.defaultPrevented) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        onCameraRoll(-2);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        onCameraRoll(2);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onCameraRoll]);
+
   // Hit-test mouse and set hovered star
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,6 +140,7 @@ export default function StarMap({
     const hitPadding = 12;
 
     const handleMove = (e) => {
+      if (isDraggingRef.current) return;
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
@@ -207,7 +283,80 @@ export default function StarMap({
         ctx.fillStyle = "rgba(150, 180, 255, 0.9)";
         ctx.fillText(con.name, x, y + radius + 18);
       });
-  }, [stars, dimensions, selectedStarIds, constellations, hoveredStar]);
+    // --- Find-star direction indicator ---
+    if (findStarDirection && findStarDirection.active) {
+      if (findStarDirection.in_view && findStarDirection.hip != null) {
+        const target = stars.find((s) => s.hip === findStarDirection.hip);
+        if (target) {
+          const tx = ((target.x + 1) / 2) * W;
+          const ty = ((1 - target.y) / 2) * H;
+          const ringR = (target.radius ?? 0.5) * 4 + 14;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(tx, ty, ringR, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (findStarDirection.name) {
+            ctx.font = "13px 'Sour Gummy', cursive";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+            ctx.fillText(findStarDirection.name, tx, ty + ringR + 4);
+          }
+          ctx.restore();
+        }
+      } else {
+        const angleRad = (findStarDirection.angle * Math.PI) / 180;
+        const cx = W / 2;
+        const cy = H / 2;
+        const margin = 50;
+        const dirX = Math.cos(angleRad);
+        const dirY = -Math.sin(angleRad);
+
+        let t = 1e9;
+        if (dirX > 1e-9) t = Math.min(t, (W - margin - cx) / dirX);
+        else if (dirX < -1e-9) t = Math.min(t, (margin - cx) / dirX);
+        if (dirY > 1e-9) t = Math.min(t, (H - margin - cy) / dirY);
+        else if (dirY < -1e-9) t = Math.min(t, (margin - cy) / dirY);
+
+        const tipX = cx + dirX * t;
+        const tipY = cy + dirY * t;
+
+        const headLen = 18;
+        const headAngle = Math.PI / 5;
+        const backAngle = Math.atan2(-dirY, -dirX);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(
+          tipX + headLen * Math.cos(backAngle + headAngle),
+          tipY + headLen * Math.sin(backAngle + headAngle)
+        );
+        ctx.lineTo(
+          tipX + headLen * Math.cos(backAngle - headAngle),
+          tipY + headLen * Math.sin(backAngle - headAngle)
+        );
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.fill();
+
+        if (findStarDirection.name) {
+          const lblX = tipX + 28 * Math.cos(backAngle);
+          const lblY = tipY + 28 * Math.sin(backAngle);
+          ctx.font = "13px 'Sour Gummy', cursive";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+          ctx.fillText(findStarDirection.name, lblX, lblY);
+        }
+        ctx.restore();
+      }
+    }
+  }, [stars, dimensions, selectedStarIds, constellations, hoveredStar, findStarDirection]);
 
   return (
     <div
